@@ -141,20 +141,18 @@ The FOREIGN argument specifies the behavior if a foreign key is pressed."
       ((eq this-command (lookup-key ,name (this-single-command-keys))) nil)
 
       ;; Foreign key
-      (t (pcase-exhaustive ,foreign
-           ('ignore ;; Ignore command
-            (setq this-command 'ignore)
-            (message "%s is undefined" (key-description (this-single-command-keys))))
-
-           ('run ;; Suspend current Polyp, run command
-            (when this-command
-              (setq polyp--foreign this-command
-                    this-command 'polyp--foreign)))
-
-           ('nil ;; Quit current Polyp, reexecute command
-            (,name 'quit)
-            (let ((cmd (key-binding (this-single-command-keys))))
-              (setq this-command (if (commandp cmd) cmd)))))))))
+      (t ,@(pcase-exhaustive foreign
+             (`'ignore ;; Ignore command
+              `((setq this-command 'ignore)
+                (message "%s is undefined" (key-description (this-single-command-keys)))))
+             (`'run ;; Suspend current Polyp, run command
+              `((when this-command
+                  (setq polyp--foreign this-command
+                        this-command 'polyp--foreign))))
+             (`nil ;; Quit current Polyp, reexecute command
+              `((,name 'quit)
+                (let ((cmd (key-binding (this-single-command-keys))))
+                  (setq this-command (if (commandp cmd) cmd))))))))))
 
 (defmacro polyp--save (body)
   "Save and restore the Polyp status around BODY."
