@@ -127,10 +127,24 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
       (delete-window polyp--window)
       (kill-buffer buf))))
 
+(cl-defmacro polyp--body-off (&rest body &aux (p (gensym)))
+  "Suspend and restore the active Polyp around BODY."
+  `(let ((,p polyp--active))
+     (unwind-protect (progn ,@body)
+       (polyp--restore ,p))))
+
+(cl-defmacro polyp--body-quit (&rest body &aux (p (gensym)))
+  "Quit the current Polyp and restore the previous Polyp after BODY."
+  `(let ((,p (polyp--prev polyp--active)))
+     (unwind-protect (progn ,@body)
+       (when ,p (polyp--restore ,p)))))
+
 (defun polyp--foreign ()
-  "Execute foreign command while Polyp is suspended."
+  "Execute foreign command while active Polyp is off."
   (interactive)
-  (polyp--save (call-interactively (setq this-command polyp--foreign))))
+  (polyp--body-off
+   (funcall (polyp--name polyp--active) 'off)
+   (call-interactively (setq this-command polyp--foreign))))
 (defvar polyp--foreign)
 (setq polyp--foreign nil)
 
@@ -139,8 +153,9 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
 The FOREIGN argument specifies the behavior if a foreign key is pressed."
   `(lambda ()
      (cond
-      ;; Always quit on handle-switch-frame/keyboard-quit.
-      ((memq this-command '(handle-switch-frame keyboard-quit)) (,name 'quit))
+      ;; Always quit on keyboard-quit.
+      ((eq this-command 'keyboard-quit)
+       (polyp--body-quit (,name 'quit)))
 
       ;; Key found - keep the transient map alive.
       ((eq this-command (lookup-key ,name (this-single-command-keys))) nil)
@@ -155,15 +170,9 @@ The FOREIGN argument specifies the behavior if a foreign key is pressed."
                   (setq polyp--foreign this-command
                         this-command 'polyp--foreign))))
              (`nil ;; Quit current Polyp, reexecute command
-              `((,name 'quit)
+              `((polyp--body-quit (,name 'quit))
                 (let ((cmd (key-binding (this-single-command-keys))))
                   (setq this-command (if (commandp cmd) cmd))))))))))
-
-(cl-defmacro polyp--save (body &aux (p (gensym)))
-  "Save and restore the Polyp status around BODY."
-  `(let ((,p polyp--active))
-     (when ,p (funcall (polyp--name ,p) 'off))
-     (unwind-protect ,body (polyp--restore ,p))))
 
 (defun polyp--restore (p)
   "Restore Polyp P."
@@ -171,7 +180,7 @@ The FOREIGN argument specifies the behavior if a foreign key is pressed."
    (polyp--active
     (let ((q polyp--active))
       (while (polyp--prev q)
-         (setq q (polyp--prev q)))
+        (setq q (polyp--prev q)))
       (setf (polyp--prev q) p)))
    (overriding-terminal-local-map
     (let ((n (make-symbol "polyp--restore")))
@@ -232,7 +241,7 @@ The FOREIGN argument specifies the behavior if a foreign key is pressed."
   (nreverse res))
 
 (defmacro polyp--call (fun)
-  "Call Polyp function FUN."
+  "Call Polyp function FUN, which can be a symbol, a key string or a sexp."
   (cond
    ((symbolp fun)
     `(call-interactively (setq this-command ',fun)))
@@ -249,15 +258,18 @@ The function FUN is executed after showing the Polyp description."
   `(,(format "Show Polyp `%s' and call `%s'." name fun)
     (interactive)
     (,name)
-    (polyp--save (polyp--call ,fun))))
+    (polyp--body-off
+     (,name 'off)
+     (polyp--call ,fun))))
 
 (defun polyp--quit (name fun)
   "Generate quit function for Polyp named NAME.
 The function FUN is executed after hiding the Polyp description."
   `(,(format "Hide Polyp `%s' and call `%s'." name fun)
     (interactive)
-    (,name 'quit)
-    (polyp--call ,fun)))
+    (polyp--body-quit
+     (,name 'quit)
+     (polyp--call ,fun))))
 
 (cl-defmacro polyp--name? (p &aux (q (gensym)))
   "Name of Polyp P or nil."
@@ -311,7 +323,7 @@ The bindings which specify :quit, quit the polyp."
          (opt-foreign (plist-get opts :foreign))
          (opt-enter (plist-get opts :enter))
          (opt-update `(,@desc-update
-                     ,@(if-let (x (plist-get opts :update)) `(,x))))
+                       ,@(if-let (x (plist-get opts :update)) `(,x))))
          (opt-on `((setq polyp-status ,(if (plist-member opts :status)
                                            (plist-get opts :status)
                                          (symbol-name name)))
@@ -328,31 +340,26 @@ The bindings which specify :quit, quit the polyp."
          ,(format "Polyp `%s'." name)
          (interactive)
          (cl-assert (or (not (eq op 'on)) (eq (polyp--name? polyp--active) ',name)))
-         (pcase op
-           ('off
-            ,@opt-off
-            (internal-pop-keymap ,name 'overriding-terminal-local-map)
-            (remove-hook 'pre-command-hook (polyp--clear polyp--active))
-            (setq polyp--active nil))
-           ('quit
-            (let ((,tmp (polyp--prev polyp--active)))
-              (,name 'off)
-              ,@opt-quit
-              (when ,tmp (polyp--restore ,tmp))))
-           (_
-            (let ((,tmp polyp--active))
-              (unless (or (eq op 'on) (eq (polyp--name? ,tmp) ',name))
-                (when ,tmp (funcall (polyp--name ,tmp) 'off))
-                ,@(if opt-enter `(,opt-enter))
-                (setq polyp--active (polyp--make :name ',name
-                                                 :clear (polyp--clearfun ,name ,opt-foreign)
-                                                 :prev ,tmp)
-                      op 'on)))
-            (when (eq op 'on)
-              (add-hook 'pre-command-hook (polyp--clear polyp--active))
-              (internal-push-keymap ,name 'overriding-terminal-local-map)
-              ,@opt-on)
-            ,@opt-update)))
+         (if (or (eq op 'off) (eq op 'quit))
+             (progn
+               ,@opt-off
+               (internal-pop-keymap ,name 'overriding-terminal-local-map)
+               (remove-hook 'pre-command-hook (polyp--clear polyp--active))
+               (setq polyp--active nil)
+               (when (eq op 'quit) ,@opt-quit))
+           (let ((,tmp (polyp--make :name ',name
+                                    :clear (polyp--clearfun ,name ,opt-foreign)
+                                    :prev polyp--active)))
+             (unless (or (eq op 'on) (eq (polyp--name? polyp--active) ',name))
+               (when polyp--active (funcall (polyp--name polyp--active) 'off))
+               ,@(if opt-enter `(,opt-enter))
+               (setq polyp--active ,tmp
+                     op 'on)))
+           (when (eq op 'on)
+             (add-hook 'pre-command-hook (polyp--clear polyp--active))
+             (internal-push-keymap ,name 'overriding-terminal-local-map)
+             ,@opt-on)
+           ,@opt-update))
 
        ;; Create keymap which inherits from :base-map
        (setq ,name (make-composed-keymap (make-sparse-keymap) ,opt-base-map))
