@@ -41,7 +41,7 @@ After the description keyword arguments can be specified.
 :base-map   Base keymap used for the transient bindings.
 :bind       Bindings to which this Polyp is bound in the global keymap.
 :enter      Action to perform before entering the Polyp.
-:leave      Action to perform after quitting the Polyp.
+:quit       Action to perform after quitting the Polyp.
 :on         Action to perform when Polyp is activated.
 :off        Action to perform when Polyp is deactivated.
 :foreign    Specifies the behavior if a foreign key is pressed.
