@@ -44,7 +44,7 @@ After the description keyword arguments can be specified.
 :quit       Action to perform after quitting the Polyp.
 :on         Action to perform when Polyp is activated.
 :off        Action to perform when Polyp is deactivated.
-:foreign    Specifies the behavior if a foreign key is pressed.
+:handler    Specifies the Polyp handler, in particular the behavior if a foreign key is pressed.
 :status     Specifies the status string shown in the mode-line.
 ~~~
 
@@ -146,7 +146,7 @@ Furthermore keys can be redirect to the underlying keymap, see the `~cmd` exampl
 
 (defpolyp ~cmd
   :bind "C-z"
-  :foreign 'run
+  :handler 'run
   :on (setq cursor-type 'hollow)
   :off (setq cursor-type 'box)
   (("z" "C-z") ignore :quit)
@@ -228,7 +228,7 @@ Furthermore keys can be redirect to the underlying keymap, see the `~cmd` exampl
  _vf_ which-fun %t(which-function-mode      )   _hv_ volatile   %t(volatile-highlights-mode)
  ^^                ^^^^^^^^^^^^^^^^^^^^^^^^^^   _hh_ changes    %t(highlight-changes-mode  )"
   :bind "<home>"
-  :foreign 'ignore
+  :handler 'ignore
   ("ea" auto-fill-mode)
   ("ed" delete-selection-mode)
   ("eo" overwrite-mode)

@@ -310,7 +310,7 @@ After that, the following keyword arguments can be specified:
 - :on         Action to perform when Polyp is activated.
 - :off        Action to perform when Polyp is deactivated.
 - :update     Action to perform after each action, when Polyp is active.
-- :foreign    Specifies the behavior if a foreign key is pressed.
+- :handler    Specifies the Polyp handler, in particular the behavior if a foreign key is pressed.
 - :status     Specifies the status string shown in the mode-line.
 
 Then a list of key bindings can be given of the form:
@@ -337,7 +337,7 @@ The bindings which specify :quit, quit the polyp."
                         desc-quit))
          (opt-global-map (or (plist-get opts :global-map) 'global-map))
          (opt-base-map (or (plist-get opts :base-map) 'polyp-base-map))
-         (opt-foreign (plist-get opts :foreign))
+         (opt-handler (plist-get opts :handler))
          (opt-enter (plist-get opts :enter))
          (opt-update `(,@desc-update
                        ,@(if-let (x (plist-get opts :update)) `(,x))))
@@ -366,7 +366,7 @@ The bindings which specify :quit, quit the polyp."
                (when (eq op 'quit) ,@opt-quit))
            (let ((,tmp (polyp--make :name ',name
                                     :handler ',(intern (format "polyp--handler-%s"
-                                                               (if opt-foreign (eval opt-foreign) 'quit)))
+                                                               (if opt-handler (eval opt-handler) 'quit)))
                                     :prev polyp--active)))
              (unless (or (eq op 'on) (and polyp--active (eq (polyp--name polyp--active) ',name)))
                (when polyp--active (funcall (polyp--name polyp--active) 'off))
@@ -395,7 +395,7 @@ The bindings which specify :quit, quit the polyp."
                     (append (polyp--bind-keys name enter sym)
                             (polyp--bind-keys opt-global-map enter sym)))
                 ,@(polyp--bind-keys name key sym))))
-          (polyp--reject '(:enter :quit :on :off :update :foreign :bind :base-map :global-map) opts))
+          (polyp--reject '(:enter :quit :on :off :update :handler :bind :base-map :global-map) opts))
        ',name)))
 
 ;;;###autoload
