@@ -146,12 +146,14 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
      (unwind-protect (progn ,@body)
        (when ,p (polyp--restore ,p)))))
 
-(defun polyp--foreign ()
+(defun polyp--foreign (&optional arg)
   "Execute foreign command while active Polyp is off."
-  (interactive)
+  (interactive "P")
   (polyp--body-off
    (funcall (polyp--name polyp--active) 'off)
-   (call-interactively (setq this-command polyp--foreign))))
+   (setq this-command polyp--foreign
+         current-prefix-arg arg)
+   (call-interactively polyp--foreign)))
 (defvar polyp--foreign nil)
 
 (defsubst polyp--valid-key ()
@@ -186,7 +188,10 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
       (funcall (polyp--name polyp--active) 'quit)
       (when p (polyp--restore p)))
     (setq this-command 'ignore
-          unread-command-events (listify-key-sequence (this-single-command-keys)))))
+          unread-command-events
+          ;; HACK: For some reason this-command-keys does not include the prefix, add it manually.
+          (append (if prefix-arg (listify-key-sequence (format "\C-u%s" (prefix-numeric-value prefix-arg))))
+                   (listify-key-sequence (this-single-command-keys))))))
 
 (defun polyp--restore (p)
   "Restore Polyp P."
@@ -411,6 +416,17 @@ The bindings which specify :quit, quit the polyp."
   (if polyp-mode
       (push '(polyp-status ("" polyp-mode-line " ")) mode-line-misc-info)
     (setq mode-line-misc-info (assq-delete-all 'polyp-status mode-line-misc-info))))
+
+(defun polyp-repeat (&optional arg)
+  "Repeat last Polyp command. The prefix argument can be overwritten by ARG."
+  (interactive "p")
+  (setq current-prefix-arg (if (eq arg 1) last-prefix-arg arg)
+        this-command last-command)
+  (let ((n (prefix-numeric-value current-prefix-arg)))
+    (if (and current-prefix-arg (/= n 1))
+        (message "Repeat %sx %s" n this-command)
+      (message "Repeat %s" this-command)))
+  (call-interactively this-command))
 
 (provide 'polyp)
 ;;; polyp.el ends here
