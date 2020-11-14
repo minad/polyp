@@ -79,8 +79,13 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
 (defconst polyp--buffer-name " *polyp*")
 
 (defvar polyp-base-map
-  (let ((map (assq-delete-all 'switch-frame (copy-keymap universal-argument-map))))
-    (define-key map (kbd "C-g") 'polyp--quit)
+  (let ((map (make-sparse-keymap)))
+    (define-key map [?\C-g] 'polyp--quit)
+    (define-key map [?\C-u] 'universal-argument)
+    (define-key map [?-] 'negative-argument)
+    (dotimes (n 10)
+      (define-key map (vector (intern (format "<kp-%s>" n))) 'digit-argument)
+      (define-key map (vector (+ ?0 n)) 'digit-argument))
     map)
   "Keymap used as parent keymap for the transient maps.")
 
@@ -154,6 +159,8 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
   (or
    ;; Always run prefix-help-command.
    (eq this-command prefix-help-command)
+   ;; Always run universal-argument-more, which follows universal-argument.
+   (eq this-command 'universal-argument-more)
    ;; Key found in the Polyp keymap.
    (eq this-command (lookup-key (symbol-value (polyp--name polyp--active)) (this-single-command-keys)))))
 
