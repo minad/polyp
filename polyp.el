@@ -149,38 +149,33 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
    (call-interactively (setq this-command polyp--foreign))))
 (defvar polyp--foreign nil)
 
-(defmacro polyp--handler-ignore (name)
-  `(cond
+(defmacro polyp--valid-key ()
+  `(or
     ;; Always run prefix-help-command.
-    ((eq this-command prefix-help-command) nil)
-    ;; Key found - keep the transient map alive.
-    ((eq this-command (lookup-key ,name (this-single-command-keys))) nil)
-    ;; Foreign key - Ignore command.
-    (t (setq this-command 'ignore)
-       (message "%s is undefined" (key-description (this-single-command-keys))))))
+    (eq this-command prefix-help-command)
+    ;; Key found in the Polyp keymap.
+    (eq this-command (lookup-key (symbol-value (polyp--name polyp--active)) (this-single-command-keys)))))
 
-(defmacro polyp--handler-run (name)
-  `(cond
-    ;; Always run prefix-help-command.
-    ((eq this-command prefix-help-command) nil)
-    ;; Key found - keep the transient map alive.
-    ((eq this-command (lookup-key ,name (this-single-command-keys))) nil)
-    ;; Foreign key - Suspend current Polyp, run command.
-    (t (setq polyp--foreign this-command
-             this-command (and this-command 'polyp--foreign)))))
+(defun polyp--handler-ignore ()
+  (unless (polyp--valid-key)
+    ;; Ignore command
+    (setq this-command 'ignore)
+    (message "%s is undefined" (key-description (this-single-command-keys)))))
 
-(defmacro polyp--handler-quit (name)
-  `(cond
-    ;; Always run prefix-help-command.
-    ((eq this-command prefix-help-command) nil)
-    ;; Key found - keep the transient map alive.
-    ((eq this-command (lookup-key ,name (this-single-command-keys))) nil)
-    ;; Foreign key - Quit current Polyp, reexecute command.
-    (t (let ((p (polyp--prev polyp--active)))
-         (,name 'quit)
-       (when p (polyp--restore p)))
-       (setq this-command 'ignore
-             unread-command-events (listify-key-sequence (this-single-command-keys))))))
+(defun polyp--handler-run ()
+  (unless (polyp--valid-key)
+    ;; Suspend current Polyp, run command.
+    (setq polyp--foreign this-command
+          this-command (and this-command 'polyp--foreign))))
+
+(defun polyp--handler-quit ()
+  (unless (polyp--valid-key)
+    ;; Quit current Polyp, reexecute command.
+    (let ((p (polyp--prev polyp--active)))
+      (funcall (polyp--name polyp--active) 'quit)
+      (when p (polyp--restore p)))
+    (setq this-command 'ignore
+          unread-command-events (listify-key-sequence (this-single-command-keys)))))
 
 (defun polyp--restore (p)
   "Restore Polyp P."
@@ -363,9 +358,8 @@ The bindings which specify :quit, quit the polyp."
                (setq polyp--active nil)
                (when (eq op 'quit) ,@opt-quit))
            (let ((,tmp (polyp--make :name ',name
-                                    :handler (lambda () (,(intern (format "polyp--handler-%s"
-                                                                        (if opt-foreign (eval opt-foreign) 'quit)))
-                                                                ,name))
+                                    :handler ',(intern (format "polyp--handler-%s"
+                                                               (if opt-foreign (eval opt-foreign) 'quit)))
                                     :prev polyp--active)))
              (unless (or (eq op 'on) (eq (polyp--name? polyp--active) ',name))
                (when polyp--active (funcall (polyp--name polyp--active) 'off))
