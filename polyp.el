@@ -178,7 +178,7 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
     ;; Foreign key - Quit current Polyp, reexecute command.
     (t (let ((p (polyp--prev polyp--active)))
          (,name 'quit)
-       ((when )hen p (polyp--restore p)))
+       (when p (polyp--restore p)))
        (setq this-command 'ignore
              unread-command-events (listify-key-sequence (this-single-command-keys))))))
 
