@@ -49,22 +49,10 @@
 (defvar polyp-status nil
   "The Polyp status, which is shown in the mode-line if `polyp-mode' is enabled.")
 
-(defvar polyp--rewrite-pending nil
-  "Pending keys for rewrite.")
-
 (defgroup polyp nil
   "Polyp customizations."
   :group 'bindings
   :prefix "polyp-")
-
-(defcustom polyp-rewrite-keys
-  '((?g . meta)
-    (?G . control-meta)
-    (?h . literal)
-    (?H . raw))
-  "Key translations."
-  :type 'alist
-  :group 'polyp)
 
 (defcustom polyp-highlight
   '(("_" . font-lock-function-name-face)
@@ -161,89 +149,6 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
    (call-interactively (setq this-command polyp--foreign))))
 (defvar polyp--foreign nil)
 
-(defun polyp--rewrite-keys (v)
-  "Rewrite key vector V."
-  (let ((w []) (mod nil) (tmp nil))
-    (seq-doseq (c v)
-      (cond
-       ;; Raw keys
-       ((or (eq mod 'raw)
-            (not (numberp c)) ;; symbolic key
-            (< c 32) ;; ascii control key
-            (/= 0 (logand #xC000000 c))) ;; already modified
-        (setq w (vconcat w (vector c))
-              mod 'raw))
-
-       ;; Literal key
-       ((eq mod 'literal)
-        (setq w (vconcat w (vector c))
-              mod nil))
-
-       ;; Control-meta key
-       ((eq mod 'control-meta)
-        (setq w (vconcat w (vector (logior #xC000000 c)))
-              mod nil))
-
-       ;; Meta key
-       ((eq mod 'meta)
-        (setq w (vconcat w (vector (logior #x8000000 c)))
-              mod nil))
-
-       ;; Enable modifiers
-       ((setq tmp (assoc c polyp-rewrite-keys))
-        (setq mod (cdr tmp)))
-
-       ;; Rewrite A => M-a
-       ((and (<= ?A c) (<= c ?Z))
-        (setq w (vconcat w (vector (logior #x8000000 (+ c 32))))))
-
-       ;; Control key
-       ((and (>= c ?@) (<= c ?_)) ;; ascii control codes
-        (setq w (if (key-binding (setq tmp (vconcat w (vector (- c ?@)))))
-                    tmp
-                  (vconcat w (vector c)))))
-       ((and (>= c ?a) (<= c ?z)) ;; ascii control codes
-        (setq w (if (key-binding (setq tmp (vconcat w (vector (1+ (- c ?a))))))
-                    tmp
-                  (vconcat w (vector c)))))
-       (t
-        (setq w (if (key-binding (setq tmp (vconcat w (vector (logior #x4000000 c)))))
-                    tmp
-                  (vconcat w (vector c)))))))
-    w))
-
-(defun polyp--rewrite-which-key-keys (fun)
-  (if polyp--rewrite-pending (polyp--rewrite-keys polyp--rewrite-pending) (funcall fun)))
-
-(defun polyp--rewrite-which-key-hide (fun)
-  (unless polyp--rewrite-pending (funcall fun)))
-
-(defun polyp--rewrite-which-key-init ()
-  (when (and polyp--rewrite-which-key-init (fboundp 'which-key--this-command-keys))
-    (advice-add 'which-key--this-command-keys :around 'polyp--rewrite-which-key-keys)
-    (advice-add 'which-key--hide-popup :around 'polyp--rewrite-which-key-hide)
-    (setq polyp--rewrite-which-key-init nil)))
-(defvar polyp--rewrite-which-key-init t)
-
-(defun polyp--rewrite ()
-  (polyp--rewrite-which-key-init)
-  (setq polyp--rewrite-pending (vconcat polyp--rewrite-pending (this-single-command-keys))
-        this-command 'ignore)
-  (let* ((keys (polyp--rewrite-keys polyp--rewrite-pending))
-         (bind (key-binding keys)))
-    (cond
-     ((= 0 (length keys)) nil)
-     ((not bind)
-      (message "%s is undefined" (key-description keys))
-      (setq polyp--rewrite-pending nil))
-     ((commandp bind)
-      (setq last-command-event (elt keys (- (length keys) 1))
-            polyp--foreign bind
-            polyp--rewrite-pending nil
-            this-command 'polyp--foreign))
-     (t (let ((message-log-max))
-          (message "%s" (key-description keys)))))))
-
 (defmacro polyp--handler-ignore (name)
   `(cond
     ;; Always run prefix-help-command.
@@ -271,19 +176,11 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
     ;; Key found - keep the transient map alive.
     ((eq this-command (lookup-key ,name (this-single-command-keys))) nil)
     ;; Foreign key - Quit current Polyp, reexecute command.
-    (t
-     (let ((p (polyp--prev polyp--active)))
-       (,name 'quit)
-       (when p (polyp--restore p)))
-     (setq this-command 'ignore
-           unread-command-events (listify-key-sequence (this-single-command-keys))))))
-
-(defmacro polyp--handler-rewrite (name)
-  `(cond
-    ;; Key found and no key translation ongoing - keep the transient map alive.
-    ((and (not polyp--rewrite-pending) (eq this-command (lookup-key ,name (this-single-command-keys)))) nil)
-    ;; Foreign key - Perform translation.
-    (t (polyp--rewrite))))
+    (t (let ((p (polyp--prev polyp--active)))
+         (,name 'quit)
+       ((when )hen p (polyp--restore p)))
+       (setq this-command 'ignore
+             unread-command-events (listify-key-sequence (this-single-command-keys))))))
 
 (defun polyp--restore (p)
   "Restore Polyp P."
@@ -359,7 +256,8 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
    ((stringp fun)
     `(let ((cmd (key-binding ,(kbd fun))))
        (if (commandp cmd)
-           (call-interactively (setq this-command cmd)))))
+           (call-interactively (setq this-command cmd))
+         (setq unread-command-events ',(listify-key-sequence (kbd fun))))))
    (t fun)))
 
 (defun polyp--quit ()
