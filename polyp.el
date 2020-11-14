@@ -134,64 +134,69 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
       (delete-window polyp--window)
       (kill-buffer buf))))
 
-(cl-defmacro polyp--body-off (&rest body &aux (p (gensym)))
+(defmacro polyp--body-off (&rest body)
   "Suspend and restore the active Polyp around BODY."
-  `(let ((,p polyp--active))
-     (unwind-protect (progn ,@body)
-       (polyp--restore ,p))))
+  (let ((p (gensym)))
+    `(let ((,p polyp--active))
+       (unwind-protect (progn ,@body)
+         (polyp--restore ,p)))))
 
-(cl-defmacro polyp--body-quit (&rest body &aux (p (gensym)))
+(defmacro polyp--body-quit (&rest body)
   "Quit the current Polyp and restore the previous Polyp after BODY."
-  `(let ((,p (polyp--prev polyp--active)))
-     (unwind-protect (progn ,@body)
-       (when ,p (polyp--restore ,p)))))
+  (let ((p (gensym)))
+    `(let ((,p (polyp--prev polyp--active)))
+       (unwind-protect (progn ,@body)
+         (when ,p (polyp--restore ,p))))))
+
+(defvar polyp--foreign nil)
 
 (defun polyp--foreign (&optional arg)
-  "Execute foreign command while active Polyp is off."
+  "Execute foreign command while active Polyp is off. ARG is the universal argument."
   (interactive "P")
   (polyp--body-off
    (funcall (polyp--name polyp--active) 'off)
    (setq this-command polyp--foreign
          current-prefix-arg arg)
    (call-interactively polyp--foreign)))
-(defvar polyp--foreign nil)
 
-(defsubst polyp--valid-key ()
-  "Return t if the current key event is part of the Polyp keymap."
+(defsubst polyp--valid-keys (keys)
+  "Return t if KEYS is part of the Polyp keymap."
   (or
    ;; Always run prefix-help-command.
    (eq this-command prefix-help-command)
    ;; Always run universal-argument-more, which follows universal-argument.
    (eq this-command 'universal-argument-more)
    ;; Key found in the Polyp keymap.
-   (eq this-command (lookup-key (symbol-value (polyp--name polyp--active)) (this-single-command-keys)))))
+   (eq this-command (lookup-key (symbol-value (polyp--name polyp--active)) keys))))
 
 (defun polyp--handler-ignore ()
   "Polyp event handler. Foreign keys are ignored."
-  (unless (polyp--valid-key)
-    ;; Ignore command
-    (setq this-command 'ignore)
-    (message "%s is undefined" (key-description (this-single-command-keys)))))
+  (let ((keys (this-single-command-keys)))
+    (unless (polyp--valid-keys keys)
+      ;; Ignore command
+      (setq this-command 'ignore)
+      (message "%s is undefined" (key-description keys)))))
 
 (defun polyp--handler-run ()
   "Polyp event handler. Foreign keys are executed."
-  (unless (polyp--valid-key)
+  (unless (polyp--valid-keys (this-single-command-keys))
     ;; Suspend current Polyp, run command.
     (setq polyp--foreign this-command
           this-command (and this-command 'polyp--foreign))))
 
 (defun polyp--handler-quit ()
   "Polyp event handler. The Polyp is left on a foreign key press."
-  (unless (polyp--valid-key)
-    ;; Quit current Polyp, reexecute command.
-    (let ((p (polyp--prev polyp--active)))
-      (funcall (polyp--name polyp--active) 'quit)
-      (when p (polyp--restore p)))
-    (setq this-command 'ignore
-          unread-command-events
-          ;; HACK: For some reason this-command-keys does not include the prefix, add it manually.
-          (append (if prefix-arg (listify-key-sequence (format "\C-u%s" (prefix-numeric-value prefix-arg))))
-                   (listify-key-sequence (this-single-command-keys))))))
+  (let ((keys (this-single-command-keys)))
+    (unless (polyp--valid-keys keys)
+      ;; Quit current Polyp, reexecute command.
+      (let ((p (polyp--prev polyp--active)))
+        (funcall (polyp--name polyp--active) 'quit)
+        (when p (polyp--restore p)))
+      (setq this-command 'ignore
+            unread-command-events
+            ;; HACK: For some reason this-command-keys does not include the prefix, add it manually.
+            (append (if prefix-arg (listify-key-sequence (format "\C-u%s" (prefix-numeric-value prefix-arg))))
+                    (listify-key-sequence keys))))))
 
 (defun polyp--restore (p)
   "Restore Polyp P."
@@ -234,30 +239,32 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
                    t nil str))))
     str))
 
-(cl-defun polyp--parse-desc (desc &aux (str "") fields)
+(defun polyp--parse-desc (desc)
   "Parse the description string DESC."
-  (setq desc (replace-regexp-in-string "%t(" "%(polyp--toggle! " desc))
-  (save-match-data
-    (while (string-match "\\(%[^(]*\\)(" desc)
-      (let ((s (match-string 1 desc))
-            (r (read-from-string (substring desc (match-end 1)))))
-        (setq str (concat str (substring desc 0 (match-beginning 0)) "%s")
-              desc (substring desc (+ (match-end 1) (cdr r))))
-        (push (if (string= s "%") (car r) `(format ,s ,(car r))) fields))))
-  (cons (polyp--colorize (concat str desc)) (nreverse fields)))
+  (let ((str "") fields)
+    (setq desc (replace-regexp-in-string "%t(" "%(polyp--toggle! " desc))
+    (save-match-data
+      (while (string-match "\\(%[^(]*\\)(" desc)
+        (let ((s (match-string 1 desc))
+              (r (read-from-string (substring desc (match-end 1)))))
+          (setq str (concat str (substring desc 0 (match-beginning 0)) "%s")
+                desc (substring desc (+ (match-end 1) (cdr r))))
+          (push (if (string= s "%") (car r) `(format ,s ,(car r))) fields))))
+    (cons (polyp--colorize (concat str desc)) (nreverse fields))))
 
 (defun polyp--bind-keys (map keys fun)
   "Bind a list of KEYS to FUN in the keymap MAP."
   (mapcar (lambda (k) `(,polyp-bind ,k ',fun ,map)) (if (stringp keys) (list keys) keys)))
 
-(cl-defun polyp--reject (keys map &aux res)
+(defun polyp--reject (keys map)
   "Remove all KEYS from property MAP."
-  (while map
-    (if (memq (car map) keys)
-        (setq map (cddr map))
-      (push (car map) res)
-      (setq map (cdr map))))
-  (nreverse res))
+  (let ((res))
+    (while map
+      (if (memq (car map) keys)
+          (setq map (cddr map))
+        (push (car map) res)
+        (setq map (cdr map))))
+    (nreverse res)))
 
 (defmacro polyp--call (fun)
   "Call Polyp function FUN, which can be a symbol, a key string or a sexp."
@@ -321,7 +328,7 @@ After that, the following keyword arguments can be specified:
 - :on         Action to perform when Polyp is activated.
 - :off        Action to perform when Polyp is deactivated.
 - :update     Action to perform after each action, when Polyp is active.
-- :handler    Specifies the Polyp handler, in particular the behavior if a foreign key is pressed.
+- :handler    Specifies the Polyp handler, which handles foreign keys.
 - :status     Specifies the status string shown in the mode-line.
 
 Then a list of key bindings can be given of the form:
