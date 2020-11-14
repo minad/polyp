@@ -149,13 +149,13 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
    (call-interactively (setq this-command polyp--foreign))))
 (defvar polyp--foreign nil)
 
-(defmacro polyp--valid-key ()
+(defsubst polyp--valid-key ()
   "Return t if the current key event is part of the Polyp keymap."
-  `(or
-    ;; Always run prefix-help-command.
-    (eq this-command prefix-help-command)
-    ;; Key found in the Polyp keymap.
-    (eq this-command (lookup-key (symbol-value (polyp--name polyp--active)) (this-single-command-keys)))))
+  (or
+   ;; Always run prefix-help-command.
+   (eq this-command prefix-help-command)
+   ;; Key found in the Polyp keymap.
+   (eq this-command (lookup-key (symbol-value (polyp--name polyp--active)) (this-single-command-keys)))))
 
 (defun polyp--handler-ignore ()
   "Polyp event handler. Foreign keys are ignored."
@@ -285,12 +285,11 @@ The function FUN is executed after hiding the Polyp description."
      (,name 'quit)
      (polyp--call ,fun))))
 
-(cl-defmacro polyp--set-status (status &aux (s (gensym)))
+(defsubst polyp--set-status (status)
   "Set Polyp mode line STATUS."
-  `(let ((,s ,status))
-     (unless (equal polyp-status ,s)
-       (setq polyp-status ,s)
-       (force-mode-line-update t))))
+  (unless (equal polyp-status status)
+    (setq polyp-status status)
+    (force-mode-line-update t)))
 
 ;;;###autoload
 (defmacro defpolyp (name &rest body)
