@@ -150,6 +150,7 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
 (defvar polyp--foreign nil)
 
 (defmacro polyp--valid-key ()
+  "Return t if the current key event is part of the Polyp keymap."
   `(or
     ;; Always run prefix-help-command.
     (eq this-command prefix-help-command)
@@ -157,18 +158,21 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
     (eq this-command (lookup-key (symbol-value (polyp--name polyp--active)) (this-single-command-keys)))))
 
 (defun polyp--handler-ignore ()
+  "Polyp event handler. Foreign keys are ignored."
   (unless (polyp--valid-key)
     ;; Ignore command
     (setq this-command 'ignore)
     (message "%s is undefined" (key-description (this-single-command-keys)))))
 
 (defun polyp--handler-run ()
+  "Polyp event handler. Foreign keys are executed."
   (unless (polyp--valid-key)
     ;; Suspend current Polyp, run command.
     (setq polyp--foreign this-command
           this-command (and this-command 'polyp--foreign))))
 
 (defun polyp--handler-quit ()
+  "Polyp event handler. The Polyp is left on a foreign key press."
   (unless (polyp--valid-key)
     ;; Quit current Polyp, reexecute command.
     (let ((p (polyp--prev polyp--active)))
@@ -197,7 +201,7 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
 
 (defun polyp--toggle (flag)
   "Generate a toggle string depending on FLAG."
-  (concat "(" (if flag (propertize "•" 'face 'success) " ") ")"))
+  (concat "(" (if flag #("•" 0 1 (face success)) " ") ")"))
 
 (defmacro polyp--toggle! (flag)
   "Macro used to generate a toggle for FLAG."
@@ -281,9 +285,12 @@ The function FUN is executed after hiding the Polyp description."
      (,name 'quit)
      (polyp--call ,fun))))
 
-(cl-defmacro polyp--name? (p &aux (q (gensym)))
-  "Name of Polyp P or nil."
-  `(let ((,q ,p)) (and ,q (polyp--name ,q))))
+(cl-defmacro polyp--set-status (status &aux (s (gensym)))
+  "Set Polyp mode line STATUS."
+  `(let ((,s ,status))
+     (unless (equal polyp-status ,s)
+       (setq polyp-status ,s)
+       (force-mode-line-update t))))
 
 ;;;###autoload
 (defmacro defpolyp (name &rest body)
@@ -334,11 +341,11 @@ The bindings which specify :quit, quit the polyp."
          (opt-enter (plist-get opts :enter))
          (opt-update `(,@desc-update
                        ,@(if-let (x (plist-get opts :update)) `(,x))))
-         (opt-on `((setq polyp-status ,(if (plist-member opts :status)
+         (opt-on `((polyp--set-status ,(if (plist-member opts :status)
                                            (plist-get opts :status)
                                          (symbol-name name)))
                    ,@(if-let (x (plist-get opts :on)) `(,x))))
-         (opt-off `((setq polyp-status nil)
+         (opt-off `((polyp--set-status nil)
                     ,@(if-let (x (plist-get opts :off)) `(,x))))
          (opt-quit `(,@desc-quit
                      ,@(if-let (x (plist-get opts :quit)) `(,x))))
@@ -349,7 +356,7 @@ The bindings which specify :quit, quit the polyp."
        (defun ,name (&optional op)
          ,(format "Polyp `%s'." name)
          (interactive)
-         (cl-assert (or (not (eq op 'on)) (eq (polyp--name? polyp--active) ',name)))
+         (cl-assert (or (not (eq op 'on)) (and polyp--active (eq (polyp--name polyp--active) ',name))))
          (if (or (eq op 'off) (eq op 'quit))
              (progn
                ,@opt-off
@@ -361,7 +368,7 @@ The bindings which specify :quit, quit the polyp."
                                     :handler ',(intern (format "polyp--handler-%s"
                                                                (if opt-foreign (eval opt-foreign) 'quit)))
                                     :prev polyp--active)))
-             (unless (or (eq op 'on) (eq (polyp--name? polyp--active) ',name))
+             (unless (or (eq op 'on) (and polyp--active (eq (polyp--name polyp--active) ',name)))
                (when polyp--active (funcall (polyp--name polyp--active) 'off))
                ,@(if opt-enter `(,opt-enter))
                (setq polyp--active ,tmp
