@@ -380,17 +380,17 @@ The bindings which specify :quit, quit the polyp."
                ,@opt-off
                (internal-pop-keymap ,name 'overriding-terminal-local-map)
                (remove-hook 'pre-command-hook (polyp--handler polyp--active))
-               (setq polyp--active nil)
-               (when (eq op 'quit) ,@opt-quit))
+               (when (eq op 'quit) ,@opt-quit)
+               (setq polyp--active nil))
            (let ((,tmp (polyp--make :name ',name
                                     :handler ',(intern (format "polyp--handler-%s"
                                                                (if opt-handler (eval opt-handler) 'quit)))
                                     :prev polyp--active)))
              (unless (or (eq op 'on) (and polyp--active (eq (polyp--name polyp--active) ',name)))
                (when polyp--active (funcall (polyp--name polyp--active) 'off))
+               (setq polyp--active ,tmp)
                ,@(if opt-enter `(,opt-enter))
-               (setq polyp--active ,tmp
-                     op 'on)))
+               (setq op 'on)))
            (when (eq op 'on)
              (add-hook 'pre-command-hook (polyp--handler polyp--active))
              (internal-push-keymap ,name 'overriding-terminal-local-map)
