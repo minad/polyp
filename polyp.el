@@ -383,6 +383,7 @@ the outer keys are added to both the transient map and the outer map.
 The bindings which specify :quit, quit the polyp."
   (let* ((opts (if (stringp (car body)) (cdr body) body))
          (desc (if (stringp (car body)) (car body)))
+         (body (polyp--reject '(:enter :quit :on :off :update :handler :bind :base-map :outer-map :status) opts))
          (desc-quit '((when polyp--update (polyp--window-hide) (setq polyp--update nil))))
          (desc-update (if desc
                           (pcase-let ((`(,desc . ,fields) (polyp--parse-desc desc)))
@@ -453,7 +454,7 @@ The bindings which specify :quit, quit the polyp."
                     (append (polyp--bind-keys name enter sym)
                             (polyp--bind-keys opt-outer-map enter sym)))
                 ,@(polyp--bind-keys name key sym))))
-          (polyp--reject '(:enter :quit :on :off :update :handler :bind :base-map :outer-map) opts))
+          body)
        ',name)))
 
 ;;;###autoload
