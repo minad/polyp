@@ -37,30 +37,30 @@ Furthermore string interpolation using `%e(expr)` and toggles `%t(expr)` are sup
 After the description keyword arguments can be specified.
 
 ~~~
-:global-map Keymap used for the global bindings.
-:base-map   Base keymap used for the transient bindings.
-:bind       Bindings to which this Polyp is bound in the global keymap.
-:enter      Action to perform before entering the Polyp.
-:quit       Action to perform after quitting the Polyp.
-:on         Action to perform when Polyp is activated.
-:off        Action to perform when Polyp is deactivated.
-:handler    Specifies the Polyp handler, in particular the behavior if a foreign key is pressed.
-:status     Specifies the status string shown in the mode-line.
+:outer-map Keymap used for the outer bindings.
+:base-map  Base keymap used for the transient bindings.
+:bind      Bindings to which this Polyp is bound in the outer keymap.
+:enter     Action to perform before entering the Polyp.
+:quit      Action to perform after quitting the Polyp.
+:on        Action to perform when Polyp is activated.
+:off       Action to perform when Polyp is deactivated.
+:handler   Specifies the Polyp handler, in particular the behavior if a foreign key is pressed.
+:status    Specifies the status string shown in the mode-line.
 ~~~
 
 The bindings have the following form, where the `key` is bound to `function` when the mode is active.
-Furthermore a binding ca be bound to a `global-key` or can be marked as `:quit`. The `global-key` enters
+Furthermore a binding ca be bound to a `outer-key` or can be marked as `:quit`. The `outer-key` enters
 the mode and if the key of a `:quit` binding is pressed, the mode is left again.
 
 ~~~ elisp
 ("key" function :quit)
-("key" function "global-key")
+("key" function "outer-key")
 ~~~
 
 It is also possible to specify multiple keys.
 
 ~~~ elisp
-(("key1" "key2") function "global-key1" "global-key2"...)
+(("key1" "key2") function "outer-key1" "outer-key2"...)
 (("key1" "key2") function :quit)
 ~~~
 
@@ -146,7 +146,7 @@ Furthermore keys can be redirect to the underlying keymap, see the `~cmd` exampl
 
 (defpolyp ~cmd
   :bind "C-z"
-  :handler 'run
+  :handler run
   :on (setq cursor-type 'hollow)
   :off (setq cursor-type 'box)
   (("z" "C-z") ignore :quit)
@@ -222,13 +222,13 @@ Furthermore keys can be redirect to the underlying keymap, see the `~cmd` exampl
  _vl_ line-num  %t(display-line-numbers-mode)   _hd_ delim      %t(rainbow-delimiters-mode )   _es_ subword   %t(subword-mode         )   _de_ error  %t(debug-on-error )
  _vr_ ruler     %t(ruler-mode               )   _hc_ color      %t(rainbow-mode            )   _ep_ elec-pair %t(electric-pair-mode   )   _ds_ signal %t(debug-on-signal)
  _vm_ minions   %t(minions-mode             )   _hw_ whitespace %t(whitespace-mode         )   _eo_ overwrite %t(overwrite-mode       )
- _vk_ which-key %t(which-key-mode           )   _hl_ line       %t(global-hl-line-mode     )   _ed_ delsel    %t(delete-selection-mode)
+ _vk_ which-key %t(which-key-mode           )   _hl_ line       %t(outer-hl-line-mode     )   _ed_ delsel    %t(delete-selection-mode)
  _vo_ outline   %t(outline-minor-mode       )   _ht_ todo       %t(hl-todo-mode            )   _ea_ auto-fill %t(auto-fill-function   )
  _vw_ winner    %t(winner-mode              )   _hp_ parens     %t(show-paren-mode         )
  _vf_ which-fun %t(which-function-mode      )   _hv_ volatile   %t(volatile-highlights-mode)
  ^^                ^^^^^^^^^^^^^^^^^^^^^^^^^^   _hh_ changes    %t(highlight-changes-mode  )"
   :bind "<home>"
-  :handler 'ignore
+  :handler ignore
   ("ea" auto-fill-mode)
   ("ed" delete-selection-mode)
   ("eo" overwrite-mode)
@@ -237,7 +237,7 @@ Furthermore keys can be redirect to the underlying keymap, see the `~cmd` exampl
   ("hc" rainbow-mode)
   ("hd" rainbow-delimiters-mode)
   ("hh" highlight-changes-mode)
-  ("hl" global-hl-line-mode)
+  ("hl" outer-hl-line-mode)
   ("hp" show-paren-mode)
   ("ht" hl-todo-mode)
   ("hv" volatile-highlights-mode)

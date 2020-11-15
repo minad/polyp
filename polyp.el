@@ -77,17 +77,54 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
 ;;;###autoload (put 'polyp-mode-line 'risky-local-variable t)
 
 (defconst polyp--buffer-name " *polyp*")
+(with-eval-after-load "ace-window" (push polyp--buffer-name aw-ignored-buffers))
 
 (defvar polyp-base-map
   (let ((map (make-sparse-keymap)))
     (define-key map [?\C-g] 'polyp--quit)
-    (define-key map [?\C-u] 'universal-argument)
-    (define-key map [?-] 'negative-argument)
+    (define-key map [?\C-u] 'polyp--universal-argument)
+    (define-key map [?u] 'polyp--universal-argument)
+    (define-key map [?-] 'polyp--negative-argument)
+    (define-key map [kp-subtract] 'polyp--negative-argument)
     (dotimes (n 10)
-      (define-key map (vector (intern (format "<kp-%s>" n))) 'digit-argument)
-      (define-key map (vector (+ ?0 n)) 'digit-argument))
+      (define-key map (vector (intern (format "<kp-%s>" n))) 'polyp--digit-argument)
+      (define-key map (vector (+ ?0 n)) 'polyp--digit-argument))
     map)
   "Keymap used as parent keymap for the transient maps.")
+
+;; The functions `universal-argument', `digit-argument' and `negative-argument' must be
+;; replicated for Polyp, since the Emacs functions push their own transient map.
+;; This means that the Polyp keys like "u" do not work while the transient map is active.
+(defun polyp--universal-argument (arg)
+  "Replacement for `universal-argument', to be used inside a Polyp."
+  (interactive "P")
+  (setq prefix-arg (cond
+                    ((consp arg) (list (* 4 (car arg))))
+                    ((eq arg '-) '(-4))
+                    (t '(4)))))
+
+(defun polyp--digit-argument (arg)
+  "Replacement for `digit-argument', to be used inside a Polyp."
+  (interactive "P")
+  (let* ((char (if (integerp last-command-event)
+		   last-command-event
+		 (get last-command-event 'ascii-character)))
+	 (digit (- (logand char ?\177) ?0)))
+    (setq prefix-arg (cond ((integerp arg)
+                            (+ (* arg 10)
+			       (if (< arg 0) (- digit) digit)))
+                           ((eq arg '-)
+                            (if (zerop digit) '- (- digit)))
+                           (t
+                            digit)))))
+
+(defun polyp--negative-argument (arg)
+  "Replacement for `negative-argument', to be used inside a Polyp."
+  (interactive "P")
+  (prefix-command-preserve-state)
+  (setq prefix-arg (cond ((integerp arg) (- arg))
+                         ((eq arg '-) nil)
+                         (t '-))))
 
 ;; taken from lv.el
 (defun polyp--window-make ()
@@ -164,8 +201,6 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
   (or
    ;; Always run prefix-help-command.
    (eq this-command prefix-help-command)
-   ;; Always run universal-argument-more, which follows universal-argument.
-   (eq this-command 'universal-argument-more)
    ;; Key found in the Polyp keymap.
    (eq this-command (lookup-key (symbol-value (polyp--name polyp--active)) keys))))
 
@@ -244,9 +279,9 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
   (let ((str "") fields)
     (setq desc (replace-regexp-in-string "%t(" "%(polyp--toggle! " desc))
     (save-match-data
-      (while (string-match "\\(%[^(]*\\)(" desc)
+      (while (string-match "\\(%[^(`]*\\)[(`]" desc)
         (let ((s (match-string 1 desc))
-              (r (read-from-string (substring desc (match-end 1)))))
+              (r (read-from-string (replace-regexp-in-string "^`" " " (substring desc (match-end 1))))))
           (setq str (concat str (substring desc 0 (match-beginning 0)) "%s")
                 desc (substring desc (+ (match-end 1) (cdr r))))
           (push (if (string= s "%") (car r) `(format ,s ,(car r))) fields))))
@@ -254,7 +289,7 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
 
 (defun polyp--bind-keys (map keys fun)
   "Bind a list of KEYS to FUN in the keymap MAP."
-  (mapcar (lambda (k) `(,polyp-bind ,k ',fun ,map)) (if (stringp keys) (list keys) keys)))
+  (mapcar (lambda (k) `(,polyp-bind ,k ',fun ,map)) (if (listp keys) keys (list keys))))
 
 (defun polyp--reject (keys map)
   "Remove all KEYS from property MAP."
@@ -310,6 +345,11 @@ The function FUN is executed after hiding the Polyp description."
     (setq polyp-status status)
     (force-mode-line-update t)))
 
+(defun polyp--hook (opts name)
+  "Get hook option NAME from OPTS plist."
+  (if-let (x (plist-get opts name))
+      (if (symbolp x) `((,x)) `(,x))))
+
 ;;;###autoload
 (defmacro defpolyp (name &rest body)
   "Define a Polyp with a given NAME.
@@ -320,26 +360,26 @@ The first argument of the BODY can be an optional description string.
 
 After that, the following keyword arguments can be specified:
 
-- :global-map Keymap used for the global bindings.
-- :base-map   Base keymap used for the transient bindings.
-- :bind       Bindings to which this Polyp is bound in the global keymap.
-- :enter      Action to perform before entering the Polyp.
-- :quit       Action to perform after quitting the Polyp.
-- :on         Action to perform when Polyp is activated.
-- :off        Action to perform when Polyp is deactivated.
-- :update     Action to perform after each action, when Polyp is active.
-- :handler    Specifies the Polyp handler, which handles foreign keys.
-- :status     Specifies the status string shown in the mode-line.
+- :outer-map Keymap used for the outer bindings.
+- :base-map  Base keymap used for the transient bindings.
+- :bind      Bindings to which this Polyp is bound in the outer keymap.
+- :enter     Action to perform before entering the Polyp.
+- :quit      Action to perform after quitting the Polyp.
+- :on        Action to perform when Polyp is activated.
+- :off       Action to perform when Polyp is deactivated.
+- :update    Action to perform after each action, when Polyp is active.
+- :handler   Specifies the Polyp handler, which handles foreign keys.
+- :status    Specifies the status string shown in the mode-line.
 
 Then a list of key bindings can be given of the form:
 
-    (\"key\" function \"global-key1\" \"global-key2\"...)
-    ((\"key1\" \"key2\") function \"global-key1\" \"global-key2\"...)
+    (\"key\" function \"outer-key1\" \"outer-key2\"...)
+    ((\"key1\" \"key2\") function \"outer-key1\" \"outer-key2\"...)
     (\"key\" function :quit)
     ((\"key1\" \"key2\") function :quit)
 
 The keys are bound to the transient map of the Polyp, while
-the global keys are added to both the transient map and the global map.
+the outer keys are added to both the transient map and the outer map.
 The bindings which specify :quit, quit the polyp."
   (let* ((opts (if (stringp (car body)) (cdr body) body))
          (desc (if (stringp (car body)) (car body)))
@@ -353,21 +393,19 @@ The bindings which specify :quit, quit the polyp."
                                   (polyp--window-show ,desc)
                                   (setq polyp--update ',name)))))
                         desc-quit))
-         (opt-global-map (or (plist-get opts :global-map) 'global-map))
+         (opt-outer-map (or (plist-get opts :outer-map) 'global-map))
          (opt-base-map (or (plist-get opts :base-map) 'polyp-base-map))
          (opt-handler (plist-get opts :handler))
-         (opt-enter (plist-get opts :enter))
-         (opt-update `(,@desc-update
-                       ,@(if-let (x (plist-get opts :update)) `(,x))))
+         (opt-enter (polyp--hook opts :enter))
+         (opt-update `(,@desc-update ,@(polyp--hook opts :update)))
          (opt-on `((polyp--set-status ,(if (plist-member opts :status)
                                            (plist-get opts :status)
                                          (symbol-name name)))
-                   ,@(if-let (x (plist-get opts :on)) `(,x))))
-         (opt-off `((polyp--set-status nil)
-                    ,@(if-let (x (plist-get opts :off)) `(,x))))
-         (opt-quit `(,@desc-quit
-                     ,@(if-let (x (plist-get opts :quit)) `(,x))))
+                   ,@(polyp--hook opts :on)))
+         (opt-off `((polyp--set-status nil) ,@(polyp--hook opts :off)))
+         (opt-quit `(,@desc-quit ,@(polyp--hook opts :quit)))
          (opt-bind (plist-get opts :bind))
+         (used-names)
          (tmp (gensym)))
     `(progn
        ;; The main function of the Polyp.
@@ -383,13 +421,12 @@ The bindings which specify :quit, quit the polyp."
                (when (eq op 'quit) ,@opt-quit)
                (setq polyp--active nil))
            (let ((,tmp (polyp--make :name ',name
-                                    :handler ',(intern (format "polyp--handler-%s"
-                                                               (if opt-handler (eval opt-handler) 'quit)))
+                                    :handler ',(intern (format "polyp--handler-%s" (or opt-handler 'quit)))
                                     :prev polyp--active)))
              (unless (or (eq op 'on) (and polyp--active (eq (polyp--name polyp--active) ',name)))
                (when polyp--active (funcall (polyp--name polyp--active) 'off))
                (setq polyp--active ,tmp)
-               ,@(if opt-enter `(,opt-enter))
+               ,@opt-enter
                (setq op 'on)))
            (when (eq op 'on)
              (add-hook 'pre-command-hook (polyp--handler polyp--active))
@@ -407,13 +444,16 @@ The bindings which specify :quit, quit the polyp."
        ,@(mapcan
           (pcase-lambda (`(,key ,fun . ,enter))
             (let ((sym (intern (format "%s/%s" name fun))))
+              (when (memq sym used-names)
+                (setq sym (intern (format "%s/%s[%s]" name fun (if (listp key) (car key) key)))))
+              (push sym used-names)
               `((defun ,sym ()
                   ,@(if (equal enter '(:quit)) (polyp--quit-fun name fun) (polyp--enter-fun name fun)))
                 ,@(unless (equal enter '(:quit))
                     (append (polyp--bind-keys name enter sym)
-                            (polyp--bind-keys opt-global-map enter sym)))
+                            (polyp--bind-keys opt-outer-map enter sym)))
                 ,@(polyp--bind-keys name key sym))))
-          (polyp--reject '(:enter :quit :on :off :update :handler :bind :base-map :global-map) opts))
+          (polyp--reject '(:enter :quit :on :off :update :handler :bind :base-map :outer-map) opts))
        ',name)))
 
 ;;;###autoload
@@ -429,6 +469,8 @@ The bindings which specify :quit, quit the polyp."
   (interactive "p")
   (setq current-prefix-arg (if (eq arg 1) last-prefix-arg arg)
         this-command last-command)
+  (when (eq last-command 'self-insert-command)
+    (setq last-command-event (char-before)))
   (let ((n (prefix-numeric-value current-prefix-arg)))
     (if (and current-prefix-arg (/= n 1))
         (message "Repeat %sx %s" n this-command)
