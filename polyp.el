@@ -87,7 +87,7 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
     (define-key map [?-] 'polyp--negative-argument)
     (define-key map [kp-subtract] 'polyp--negative-argument)
     (dotimes (n 10)
-      (define-key map (vector (intern (format "<kp-%s>" n))) 'polyp--digit-argument)
+      (define-key map (vector (intern (format "kp-%s" n))) 'polyp--digit-argument)
       (define-key map (vector (+ ?0 n)) 'polyp--digit-argument))
     map)
   "Keymap used as parent keymap for the transient maps.")
