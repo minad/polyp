@@ -77,7 +77,7 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
 ;;;###autoload (put 'polyp-mode-line 'risky-local-variable t)
 
 (defconst polyp--buffer-name " *polyp*")
-(with-eval-after-load "ace-window" (push polyp--buffer-name aw-ignored-buffers))
+(with-eval-after-load 'ace-window (push polyp--buffer-name aw-ignored-buffers))
 
 (defvar polyp-base-map
   (let ((map (make-sparse-keymap)))
@@ -372,6 +372,7 @@ After that, the following keyword arguments can be specified:
 - :update    Action to perform after each action, when Polyp is active.
 - :handler   Specifies the Polyp handler, which handles foreign keys.
 - :status    Specifies the status string shown in the mode-line.
+- :which-key Enable which-key popup.
 
 Then a list of key bindings can be given of the form:
 
@@ -385,7 +386,7 @@ the outer keys are added to both the transient map and the outer map.
 The bindings which specify :quit, quit the polyp."
   (let* ((opts (if (stringp (car body)) (cdr body) body))
          (desc (if (stringp (car body)) (car body)))
-         (body (polyp--reject '(:enter :quit :on :off :update :handler :bind :base-map :outer-map :status) opts))
+         (body (polyp--reject '(:enter :quit :on :off :update :handler :bind :base-map :outer-map :status :which-key) opts))
          (desc-quit '((when polyp--update (polyp--window-hide) (setq polyp--update nil))))
          (desc-update (if desc
                           (pcase-let ((`(,desc . ,fields) (polyp--parse-desc desc)))
@@ -399,14 +400,19 @@ The bindings which specify :quit, quit the polyp."
          (opt-outer-map (or (plist-get opts :outer-map) 'global-map))
          (opt-base-map (or (plist-get opts :base-map) 'polyp-base-map))
          (opt-handler (plist-get opts :handler))
-         (opt-enter (polyp--hook opts :enter))
+         (opt-which-key (plist-get opts :which-key))
          (opt-update `(,@desc-update ,@(polyp--hook opts :update)))
          (opt-on `((polyp--set-status ,(if (plist-member opts :status)
                                            (plist-get opts :status)
                                          (symbol-name name)))
                    ,@(polyp--hook opts :on)))
-         (opt-off `((polyp--set-status nil) ,@(polyp--hook opts :off)))
-         (opt-quit `(,@desc-quit ,@(polyp--hook opts :quit)))
+         (opt-off `((polyp--set-status nil)
+                    ,@(polyp--hook opts :off)))
+         (opt-quit `(,@desc-quit
+                     ,@(polyp--hook opts :quit)
+                     ,@(if opt-which-key '((polyp--which-key-quit)))))
+         (opt-enter `(,@(polyp--hook opts :enter)
+                      ,@(if opt-which-key '((polyp--which-key-enter)))))
          (opt-bind (plist-get opts :bind))
          (used-names)
          (tmp (gensym)))
@@ -479,6 +485,33 @@ The bindings which specify :quit, quit the polyp."
         (message "Repeat %sx %s" n this-command)
       (message "Repeat %s" this-command)))
   (call-interactively this-command))
+
+(defvar which-key-show-transient-maps)
+(defvar which-key-persistent-popup)
+(defvar polyp--which-key-state nil)
+
+(defsubst polyp--which-key-enter ()
+  "Called when Polyp with which-key support is entered."
+  (setq polyp--which-key-state (cons which-key-show-transient-maps which-key-persistent-popup)
+        which-key-show-transient-maps t
+        which-key-persistent-popup t))
+
+(defsubst polyp--which-key-quit ()
+  "Called when Polyp with which-key support is quitting."
+  (let ((state (pop polyp--which-key-state)))
+    (setq which-key-show-transient-maps (car state)
+          which-key-persistent-popup (cdr state)))
+  (unless polyp--which-key-state (which-key--hide-popup)))
+
+;; TODO is there a better possibility to add a filter to which-key?
+(defun polyp--which-key-get-bindings (fun &optional prefix keymap filter recursive)
+  "Polyp advice for `which-key--get-bindings'."
+  (when polyp--active
+    (setq filter (lambda (x) (not (string-prefix-p "polyp--" (cdr x))))))
+  (funcall fun prefix keymap filter recursive))
+
+(with-eval-after-load 'which-key
+  (advice-add 'which-key--get-bindings :around #'polyp--which-key-get-bindings))
 
 (provide 'polyp)
 ;;; polyp.el ends here

@@ -46,6 +46,7 @@ After the description keyword arguments can be specified.
 :off       Action to perform when Polyp is deactivated.
 :handler   Specifies the Polyp handler, in particular the behavior if a foreign key is pressed.
 :status    Specifies the status string shown in the mode-line.
+:which-key Enable which-key popup.
 ~~~
 
 The bindings have the following form, where the `key` is bound to `function` when the mode is active.
