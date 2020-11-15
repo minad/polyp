@@ -98,6 +98,7 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
 (defun polyp--universal-argument (arg)
   "Replacement for `universal-argument', to be used inside a Polyp."
   (interactive "P")
+  (prefix-command-preserve-state)
   (setq prefix-arg (cond
                     ((consp arg) (list (* 4 (car arg))))
                     ((eq arg '-) '(-4))
@@ -106,6 +107,7 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
 (defun polyp--digit-argument (arg)
   "Replacement for `digit-argument', to be used inside a Polyp."
   (interactive "P")
+  (prefix-command-preserve-state)
   (let* ((char (if (integerp last-command-event)
 		   last-command-event
 		 (get last-command-event 'ascii-character)))
