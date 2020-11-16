@@ -360,7 +360,7 @@ The command CMD is executed after hiding the Polyp description."
       (if (symbolp x) `((,x)) `(,x))))
 
 ;;;###autoload
-(defmacro defpolyp (name &rest body)
+(defmacro polyp (name &rest body)
   "Define a Polyp with a given NAME.
 
 The description can contain syntax highlighting.
@@ -476,6 +476,7 @@ The bindings which specify :quit, quit the polyp."
                 ,@(polyp--bind-keys name keys sym))))
           body)
        ',name)))
+(put 'polyp 'lisp-indent-function 'defun)
 
 ;;;###autoload
 (define-minor-mode polyp-mode

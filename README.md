@@ -21,7 +21,7 @@ by the text-scale-adjust function built into Emacs. It can easily be
 replicated as follows.
 
 ~~~ elisp
-(defpolyp ~scale
+(polyp ~scale
   "=Scale:=  _+_:larger  _-_:smaller  _0_:default"
   (("-" "C--") text-scale-decrease "C-x C--")
   (("+" "C-+") text-scale-increase "C-x C-+" "C-x C-=")
@@ -30,7 +30,7 @@ replicated as follows.
 
 As a convention I am using names like `~nav` which begin with a tilde, like the arm of a polyp.
 
-The second argument of the `defpolyp` macro optionally specifies a description.
+The second argument of the `polyp` macro optionally specifies a description.
 The description is shown above the mode line, when the mode is active.
 The description string can contain highlighting using `_`, `*` and `=`.
 Furthermore string interpolation using `%e(expr)` and toggles `%t(expr)` are supported.
@@ -70,23 +70,23 @@ Furthermore keys can be redirect to the underlying keymap, see the `~cmd` exampl
 ## Examples
 
 ~~~ elisp
-(defpolyp ~move-text
+(polyp ~move-text
  "=Move Text:= _↕_"
  ("<up>" move-text-up "M-<up>")
  ("<down>" move-text-down "M-<down>"))
 
-(defpolyp ~expand-region
+(polyp ~expand-region
   "=Expand:=  _#_:expand  _'_:contract  _0_:reset"
   ("#" er/expand-region)
   ("'" er/contract-region)
   ("0" (er/expand-region 0)))
 
-(defpolyp ~undo
+(polyp ~undo
   "=Undo:=  _u_ndo  _r_edo"
   ("u" undo-fu-only-undo "C-x u" "C-_" "C-/" "<undo>")
   ("r" undo-fu-only-redo))
 
-(defpolyp ~bookmark
+(polyp ~bookmark
   "=Bookmark:=  _s_et  _j_ump  _d_elete  _r_ename  _e_dit"
   ("s" bookmark-set-no-overwrite)
   ("j" bookmark-jump)
@@ -94,13 +94,13 @@ Furthermore keys can be redirect to the underlying keymap, see the `~cmd` exampl
   ("d" bookmark-delete)
   ("e" edit-bookmarks :quit))
 
-(defpolyp ~scale
+(polyp ~scale
   "=Scale:=  _+_:larger  _-_:smaller  _0_:default"
   (("-" "C--") text-scale-decrease "C-x C--")
   (("+" "C-+") text-scale-increase "C-x C-+" "C-x C-=")
   (("0" "C-0") (text-scale-increase 0) "C-x C-0"))
 
-(defpolyp ~win
+(polyp ~win
   "=Window:=  _0123_  _↔↕_:move  _C-↔↕_:resize  _M-↔↕_:swap  _u_ndo  _r_edo"
   :bind "C-x w"
   ("0"         delete-window)
@@ -122,7 +122,7 @@ Furthermore keys can be redirect to the underlying keymap, see the `~cmd` exampl
   ("M-<left>"  (buffer-swap 'left))
   ("M-<right>" (buffer-swap 'right)))
 
-(defpolyp ~multiple-cursors
+(polyp ~multiple-cursors
   "=Multiple Cursors (%(mc/num-cursors) active)=
  ↑^^            ↓^^            Mark^^              Other^^
 ──^^─────────────^^────────────────^^───────────────────^^────────────
@@ -145,7 +145,7 @@ Furthermore keys can be redirect to the underlying keymap, see the `~cmd` exampl
   ("c" mc/insert-letters :quit)
   ("0" mc/insert-numbers :quit))
 
-(defpolyp ~cmd
+(polyp ~cmd
   :bind "C-z"
   :handler run
   :on (setq cursor-type 'hollow)
@@ -216,7 +216,7 @@ Furthermore keys can be redirect to the underlying keymap, see the `~cmd` exampl
   ("x" "C-x")
   ("y" "C-y"))
 
-(defpolyp ~toggles
+(polyp ~toggles
   "=Toggles=
  ^^View            ^^^^^^^^^^^^^^^^^^^^^^^^^^   ^^Highlight        ^^^^^^^^^^^^^^^^^^^^^^^^^   ^^Edit            ^^^^^^^^^^^^^^^^^^^^^^   ^^Debug
 ─^^────────────────^^^^^^^^^^^^^^^^^^^^^^^^^^───^^─────────────────^^^^^^^^^^^^^^^^^^^^^^^^^───^^────────────────^^^^^^^^^^^^^^^^^^^^^^───^^─────────────^^^^^^^^^^^^^^^^─
