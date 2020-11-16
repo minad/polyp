@@ -81,14 +81,14 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
 
 (defvar polyp-base-map
   (let ((map (make-sparse-keymap)))
-    (define-key map [?\C-g] 'polyp--quit)
-    (define-key map [?\C-u] 'polyp--universal-argument)
-    (define-key map [?u] 'polyp--universal-argument)
-    (define-key map [?-] 'polyp--negative-argument)
-    (define-key map [kp-subtract] 'polyp--negative-argument)
+    (define-key map [?\C-g] #'polyp--quit)
+    (define-key map [?\C-u] #'polyp--universal-argument)
+    (define-key map [?u] #'polyp--universal-argument)
+    (define-key map [?-] #'polyp--negative-argument)
+    (define-key map [kp-subtract] #'polyp--negative-argument)
     (dotimes (n 10)
-      (define-key map (vector (intern (format "kp-%s" n))) 'polyp--digit-argument)
-      (define-key map (vector (+ ?0 n)) 'polyp--digit-argument))
+      (define-key map (vector (intern (format "kp-%s" n))) #'polyp--digit-argument)
+      (define-key map (vector (+ ?0 n)) #'polyp--digit-argument))
     map)
   "Keymap used as parent keymap for the transient maps.")
 
@@ -211,7 +211,7 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
   (let ((keys (this-single-command-keys)))
     (unless (polyp--valid-keys keys)
       ;; Ignore command
-      (setq this-command 'ignore)
+      (setq this-command #'ignore)
       (message "%s is undefined" (key-description keys)))))
 
 (defun polyp--handler-run ()
@@ -219,7 +219,7 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
   (unless (polyp--valid-keys (this-single-command-keys))
     ;; Suspend current Polyp, run command.
     (setq polyp--foreign this-command
-          this-command (and (commandp this-command t) 'polyp--foreign))))
+          this-command (and (commandp this-command t) #'polyp--foreign))))
 
 (defun polyp--handler-quit ()
   "Polyp event handler. The Polyp is left on a foreign key press."
@@ -229,7 +229,7 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
       (let ((p (polyp--prev polyp--active)))
         (funcall (polyp--name polyp--active) 'quit)
         (when p (polyp--restore p)))
-      (setq this-command 'ignore
+      (setq this-command #'ignore
             unread-command-events
             (append
              (mapcar (lambda (x) (cons t x))
@@ -295,7 +295,7 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
 
 (defun polyp--bind-keys (map keys cmd)
   "Bind a list of KEYS to CMD in the keymap MAP."
-  (mapcar (lambda (k) `(,polyp-bind ,k ,cmd ,map)) keys))
+  (mapcar (lambda (k) `(,polyp-bind ,k #',cmd ,map)) keys))
 
 (defun polyp--reject (keys map)
   "Remove all KEYS from property MAP."
@@ -311,7 +311,7 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
   "Call Polyp function CMD, which can be a symbol, a key string or a sexp."
   (cond
    ((symbolp cmd)
-    `(call-interactively (setq this-command ',cmd)))
+    `(call-interactively (setq this-command #',cmd)))
    ((stringp cmd)
     `(let ((bind (key-binding ,(kbd cmd))))
        (if (commandp bind t)
@@ -327,7 +327,7 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
   (interactive)
   (polyp--body-quit
    (funcall (polyp--name polyp--active) 'quit)
-   (polyp--call 'keyboard-quit)))
+   (polyp--call #'keyboard-quit)))
 
 (defun polyp--enter-cmd (name cmd)
   "Generate enter command for Polyp named NAME.
@@ -437,7 +437,7 @@ The bindings which specify :quit, quit the polyp."
                (when (eq op 'quit) ,@opt-quit)
                (setq polyp--active nil))
            (let ((,tmp (polyp--make :name ',name
-                                    :handler ',(intern (format "polyp--handler-%s" (or opt-handler 'quit)))
+                                    :handler #',(intern (format "polyp--handler-%s" (or opt-handler 'quit)))
                                     :prev polyp--active)))
              (unless (or (eq op 'on) (and polyp--active (eq (polyp--name polyp--active) ',name)))
                (when polyp--active (funcall (polyp--name polyp--active) 'off))
@@ -454,7 +454,7 @@ The bindings which specify :quit, quit the polyp."
        (setq ,name (make-composed-keymap (make-sparse-keymap) ,opt-base-map))
 
        ;; Bind main keys
-       ,@(polyp--bind-keys nil (if (listp opt-bind) opt-bind (list opt-bind)) `',name)
+       ,@(polyp--bind-keys nil (if (listp opt-bind) opt-bind (list opt-bind)) name)
 
        ;; Generate code for the bindings
        ,@(mapcan
@@ -471,9 +471,9 @@ The bindings which specify :quit, quit the polyp."
               `((defun ,sym ()
                   ,@(if (equal enter '(:quit)) (polyp--quit-cmd name cmd) (polyp--enter-cmd name cmd)))
                 ,@(unless (equal enter '(:quit))
-                    (append (polyp--bind-keys name enter `',sym)
-                            (polyp--bind-keys opt-outer-map enter `',sym)))
-                ,@(polyp--bind-keys name keys `',sym))))
+                    (append (polyp--bind-keys name enter sym)
+                            (polyp--bind-keys opt-outer-map enter sym)))
+                ,@(polyp--bind-keys name keys sym))))
           body)
        ',name)))
 
