@@ -219,7 +219,7 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
   (unless (polyp--valid-keys (this-single-command-keys))
     ;; Suspend current Polyp, run command.
     (setq polyp--foreign this-command
-          this-command (and this-command 'polyp--foreign))))
+          this-command (and (commandp this-command t) 'polyp--foreign))))
 
 (defun polyp--handler-quit ()
   "Polyp event handler. The Polyp is left on a foreign key press."
@@ -231,9 +231,13 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
         (when p (polyp--restore p)))
       (setq this-command 'ignore
             unread-command-events
-            ;; HACK: For some reason this-command-keys does not include the prefix, add it manually.
-            (append (if prefix-arg (listify-key-sequence (format "\C-u%s" (prefix-numeric-value prefix-arg))))
-                    (listify-key-sequence keys))))))
+            (append
+             (mapcar (lambda (x) (cons t x))
+                     (append (if prefix-arg
+                                 ;; HACK: For some reason this-command-keys does not include the prefix, add it manually.
+                                 (listify-key-sequence (format "\C-u%s" (prefix-numeric-value prefix-arg))))
+                             (listify-key-sequence keys)))
+                    unread-command-events)))))
 
 (defun polyp--restore (p)
   "Restore Polyp P."
@@ -289,9 +293,9 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
           (push (if (string= s "%") (car r) `(format ,s ,(car r))) fields))))
     (cons (polyp--colorize (concat str desc)) (nreverse fields))))
 
-(defun polyp--bind-keys (map keys fun)
-  "Bind a list of KEYS to FUN in the keymap MAP."
-  (mapcar (lambda (k) `(,polyp-bind ,k ',fun ,map)) (if (listp keys) keys (list keys))))
+(defun polyp--bind-keys (map keys cmd)
+  "Bind a list of KEYS to CMD in the keymap MAP."
+  (mapcar (lambda (k) `(,polyp-bind ,k ,cmd ,map)) keys))
 
 (defun polyp--reject (keys map)
   "Remove all KEYS from property MAP."
@@ -303,17 +307,20 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
         (setq map (cdr map))))
     (nreverse res)))
 
-(defmacro polyp--call (fun)
-  "Call Polyp function FUN, which can be a symbol, a key string or a sexp."
+(defmacro polyp--call (cmd)
+  "Call Polyp function CMD, which can be a symbol, a key string or a sexp."
   (cond
-   ((symbolp fun)
-    `(call-interactively (setq this-command ',fun)))
-   ((stringp fun)
-    `(let ((cmd (key-binding ,(kbd fun))))
-       (if (commandp cmd)
-           (call-interactively (setq this-command cmd))
-         (setq unread-command-events ',(listify-key-sequence (kbd fun))))))
-   (t fun)))
+   ((symbolp cmd)
+    `(call-interactively (setq this-command ',cmd)))
+   ((stringp cmd)
+    `(let ((bind (key-binding ,(kbd cmd))))
+       (if (commandp bind t)
+           (call-interactively (setq this-command bind))
+         (setq unread-command-events
+               (append
+                ',(mapcar (lambda (x) (cons t x)) (listify-key-sequence (kbd cmd)))
+                unread-command-events)))))
+   (t cmd)))
 
 (defun polyp--quit ()
   "Quit the current Polyp and restore the previous Polyp."
@@ -322,24 +329,24 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
    (funcall (polyp--name polyp--active) 'quit)
    (polyp--call 'keyboard-quit)))
 
-(defun polyp--enter-fun (name fun)
-  "Generate enter function for Polyp named NAME.
-The function FUN is executed after showing the Polyp description."
-  `(,(format "Show Polyp `%s' and call `%s'." name fun)
+(defun polyp--enter-cmd (name cmd)
+  "Generate enter command for Polyp named NAME.
+The command CMD is executed after showing the Polyp description."
+  `(,(format "Show Polyp `%s' and call `%s'." name cmd)
     (interactive)
     (,name)
     (polyp--body-off
      (,name 'off)
-     (polyp--call ,fun))))
+     (polyp--call ,cmd))))
 
-(defun polyp--quit-fun (name fun)
-  "Generate quit function for Polyp named NAME.
-The function FUN is executed after hiding the Polyp description."
-  `(,(format "Hide Polyp `%s' and call `%s'." name fun)
+(defun polyp--quit-cmd (name cmd)
+  "Generate quit command for Polyp named NAME.
+The command CMD is executed after hiding the Polyp description."
+  `(,(format "Hide Polyp `%s' and call `%s'." name cmd)
     (interactive)
     (polyp--body-quit
      (,name 'quit)
-     (polyp--call ,fun))))
+     (polyp--call ,cmd))))
 
 (defsubst polyp--set-status (status)
   "Set Polyp mode line STATUS."
@@ -376,10 +383,10 @@ After that, the following keyword arguments can be specified:
 
 Then a list of key bindings can be given of the form:
 
-    (\"key\" function \"outer-key1\" \"outer-key2\"...)
-    ((\"key1\" \"key2\") function \"outer-key1\" \"outer-key2\"...)
-    (\"key\" function :quit)
-    ((\"key1\" \"key2\") function :quit)
+    (\"key\" cmd \"outer-key1\" \"outer-key2\"...)
+    ((\"key1\" \"key2\") cmd \"outer-key1\" \"outer-key2\"...)
+    (\"key\" cmd :quit)
+    ((\"key1\" \"key2\") cmd :quit)
 
 The keys are bound to the transient map of the Polyp, while
 the outer keys are added to both the transient map and the outer map.
@@ -447,21 +454,26 @@ The bindings which specify :quit, quit the polyp."
        (setq ,name (make-composed-keymap (make-sparse-keymap) ,opt-base-map))
 
        ;; Bind main keys
-       ,@(polyp--bind-keys nil opt-bind name)
+       ,@(polyp--bind-keys nil (if (listp opt-bind) opt-bind (list opt-bind)) `',name)
 
        ;; Generate code for the bindings
        ,@(mapcan
-          (pcase-lambda (`(,key ,fun . ,enter))
-            (let ((sym (intern (format "%s/%s" name fun))))
+          (pcase-lambda (`(,keys ,cmd . ,enter))
+            ;; Normalize keys
+            (setq keys (mapcar (lambda (k) (key-description (kbd k)))
+                               (if (listp keys) keys (list keys))))
+            (when (stringp cmd) (setq cmd (key-description (kbd cmd))))
+            (let ((sym (intern (format "%s/%s" name cmd))))
+              ;; Ensure that function name is unique
               (when (memq sym used-names)
-                (setq sym (intern (format "%s/%s[%s]" name fun (if (listp key) (car key) key)))))
+                (setq sym (intern (format "%s/%s[%s]" name cmd (car keys)))))
               (push sym used-names)
               `((defun ,sym ()
-                  ,@(if (equal enter '(:quit)) (polyp--quit-fun name fun) (polyp--enter-fun name fun)))
+                  ,@(if (equal enter '(:quit)) (polyp--quit-cmd name cmd) (polyp--enter-cmd name cmd)))
                 ,@(unless (equal enter '(:quit))
-                    (append (polyp--bind-keys name enter sym)
-                            (polyp--bind-keys opt-outer-map enter sym)))
-                ,@(polyp--bind-keys name key sym))))
+                    (append (polyp--bind-keys name enter `',sym)
+                            (polyp--bind-keys opt-outer-map enter `',sym)))
+                ,@(polyp--bind-keys name keys `',sym))))
           body)
        ',name)))
 
@@ -504,6 +516,7 @@ The bindings which specify :quit, quit the polyp."
   (unless polyp--which-key-state (which-key--hide-popup)))
 
 ;; TODO is there a better possibility to add a filter to which-key?
+;; https://github.com/justbur/emacs-which-key/issues/272
 (defun polyp--which-key-get-bindings (fun &optional prefix keymap filter recursive)
   "Polyp advice for `which-key--get-bindings'."
   (when polyp--active
