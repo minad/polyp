@@ -295,7 +295,7 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
 
 (defun polyp--bind-keys (map keys cmd)
   "Bind a list of KEYS to CMD in the keymap MAP."
-  (mapcar (lambda (k) `(,polyp-bind ,k #',cmd ,map)) keys))
+  (mapcar (lambda (k) `(,polyp-bind ,(vconcat (kbd k)) #',cmd ,map)) keys))
 
 (defun polyp--reject (keys map)
   "Remove all KEYS from property MAP."
