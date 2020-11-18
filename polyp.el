@@ -35,19 +35,25 @@
 (defvar tab-line-format)
 (defvar golden-ratio-mode)
 
-(cl-defstruct (polyp- (:constructor polyp--make) (:copier nil)) name handler prev)
+(cl-defstruct (polyp- (:constructor polyp--make) (:copier nil)) name handler prev status depth)
 
 (defvar polyp--window nil
   "Current Polyp window.")
 
-(defvar polyp--update nil
+(defvar polyp--update-window nil
   "Polyp window update status.")
 
 (defvar polyp--active nil
-  "Currently active Polyp.")
+  "Polyp is active.")
 
-(defvar polyp-status nil
-  "The Polyp status, which is shown in the mode-line if `polyp-mode' is enabled.")
+(defvar polyp--stack nil
+  "Head of Polyp stack.")
+
+(defvar polyp--status-cache nil
+  "Cached status information shown in the mode line.")
+
+(defvar polyp--status-minibuffer nil
+  "Minibuffer depths.")
 
 (defgroup polyp nil
   "Polyp customizations."
@@ -68,20 +74,16 @@
   :type 'symbol
   :group 'polyp)
 
-(defcustom polyp-mode-line
-  '("[" (:propertize polyp-status face warning) "]")
-  "Polyp mode line format.
-The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
-  :type 'sexp
-  :group 'polyp)
-;;;###autoload (put 'polyp-mode-line 'risky-local-variable t)
-
 (defconst polyp--buffer-name " *polyp*")
-(with-eval-after-load 'ace-window (push polyp--buffer-name aw-ignored-buffers))
+(with-eval-after-load 'ace-window
+  (defvar aw-ignored-buffers)
+  (push polyp--buffer-name aw-ignored-buffers))
 
 (defvar polyp-base-map
   (let ((map (make-sparse-keymap)))
-    (define-key map [?\C-g] #'polyp--quit)
+    (define-key map (vector help-char) #'polyp--help-command)
+    (define-key map [?\C-g] #'polyp--keyboard-quit)
+    (define-key map [27 27 27] #'polyp--keyboard-escape-quit)
     (define-key map [?\C-u] #'polyp--universal-argument)
     (define-key map [?u] #'polyp--universal-argument)
     (define-key map [?-] #'polyp--negative-argument)
@@ -92,11 +94,16 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
     map)
   "Keymap used as parent keymap for the transient maps.")
 
+(defun polyp--help-command ()
+  "Redirect to `prefix-help-command`."
+  (interactive)
+  (call-interactively prefix-help-command))
+
 ;; The functions `universal-argument', `digit-argument' and `negative-argument' must be
 ;; replicated for Polyp, since the Emacs functions push their own transient map.
 ;; This means that the Polyp keys like "u" do not work while the transient map is active.
 (defun polyp--universal-argument (arg)
-  "Replacement for `universal-argument', to be used inside a Polyp."
+  "Replacement for `universal-argument', to be used by Polyp. Takes prefix ARG."
   (interactive "P")
   (prefix-command-preserve-state)
   (setq prefix-arg (cond
@@ -105,7 +112,7 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
                     (t '(4)))))
 
 (defun polyp--digit-argument (arg)
-  "Replacement for `digit-argument', to be used inside a Polyp."
+  "Replacement for `digit-argument', to be used by Polyp. Takes prefix ARG."
   (interactive "P")
   (prefix-command-preserve-state)
   (let* ((char (if (integerp last-command-event)
@@ -121,7 +128,7 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
                             digit)))))
 
 (defun polyp--negative-argument (arg)
-  "Replacement for `negative-argument', to be used inside a Polyp."
+  "Replacement for `negative-argument', to be used by Polyp. Takes prefix ARG."
   (interactive "P")
   (prefix-command-preserve-state)
   (setq prefix-arg (cond ((integerp arg) (- arg))
@@ -173,38 +180,41 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
       (delete-window polyp--window)
       (kill-buffer buf))))
 
-(defmacro polyp--body-off (&rest body)
-  "Suspend and restore the active Polyp around BODY."
-  (let ((p (gensym)))
-    `(let ((,p polyp--active))
-       (unwind-protect (progn ,@body)
-         (polyp--restore ,p)))))
+(defsubst polyp--active-name ()
+  "Name of current Polyp, which must be active."
+  (cl-assert (and polyp--active polyp--stack (= (polyp--depth polyp--stack) (recursion-depth))))
+  (polyp--name polyp--stack))
 
-(defmacro polyp--body-quit (&rest body)
-  "Quit the current Polyp and restore the previous Polyp after BODY."
-  (let ((p (gensym)))
-    `(let ((,p (polyp--prev polyp--active)))
-       (unwind-protect (progn ,@body)
-         (when ,p (polyp--restore ,p))))))
+(defsubst polyp--inactive-name ()
+  "Name of current Polyp, which must be inactive."
+  (cl-assert (and (not polyp--active) polyp--stack (= (polyp--depth polyp--stack) (recursion-depth))))
+  (polyp--name polyp--stack))
 
-(defvar polyp--foreign nil)
+(defsubst polyp--should-reactivate ()
+  "Return t if Polyp on the stack must be reactivated."
+  (cl-assert (and (not polyp--active)
+                  (or (not polyp--stack) (<= (polyp--depth polyp--stack) (recursion-depth)))))
+  (and polyp--stack (= (polyp--depth polyp--stack) (recursion-depth))))
 
-(defun polyp--foreign (&optional arg)
-  "Execute foreign command while active Polyp is off. ARG is the universal argument."
-  (interactive "P")
-  (polyp--body-off
-   (funcall (polyp--name polyp--active) 'off)
-   (setq this-command polyp--foreign
-         current-prefix-arg arg)
-   (call-interactively polyp--foreign)))
+(defun polyp--restore-hook ()
+  "Post-command hook used by `polyp--restore'."
+  (remove-hook 'post-command-hook #'polyp--restore-hook)
+  (polyp--restore))
+
+(defun polyp--restore ()
+  "Restore Polyp."
+  (cond
+   (polyp--active nil)
+   (overriding-terminal-local-map (add-hook 'post-command-hook #'polyp--restore-hook))
+   ((polyp--should-reactivate) (funcall (polyp--inactive-name) 'on))))
+
+(defmacro polyp--protect (body)
+  "Suspend and restore the Polyp around BODY."
+  `(unwind-protect (catch 'exit ,body) (polyp--restore)))
 
 (defsubst polyp--valid-keys (keys)
   "Return t if KEYS is part of the Polyp keymap."
-  (or
-   ;; Always run prefix-help-command.
-   (eq this-command prefix-help-command)
-   ;; Key found in the Polyp keymap.
-   (eq this-command (lookup-key (symbol-value (polyp--name polyp--active)) keys))))
+  (eq this-command (lookup-key (symbol-value (polyp--active-name)) keys)))
 
 (defun polyp--handler-ignore ()
   "Polyp event handler. Foreign keys are ignored."
@@ -216,46 +226,33 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
 
 (defun polyp--handler-run ()
   "Polyp event handler. Foreign keys are executed."
-  (unless (polyp--valid-keys (this-single-command-keys))
+  (when (and (not (polyp--valid-keys (this-single-command-keys))) this-command)
     ;; Suspend current Polyp, run command.
-    (setq polyp--foreign this-command
-          this-command (and (commandp this-command t) #'polyp--foreign))))
+    (funcall (polyp--active-name) 'off)
+    (let ((foreign this-command))
+      (setq this-command
+            (lambda (&optional arg)
+              (interactive "P")
+              (setq this-command foreign
+                    current-prefix-arg arg)
+              (polyp--protect (call-interactively foreign)))))))
 
 (defun polyp--handler-quit ()
   "Polyp event handler. The Polyp is left on a foreign key press."
   (let ((keys (this-single-command-keys)))
     (unless (polyp--valid-keys keys)
       ;; Quit current Polyp, reexecute command.
-      (let ((p (polyp--prev polyp--active)))
-        (funcall (polyp--name polyp--active) 'quit)
-        (when p (polyp--restore p)))
+      (funcall (polyp--active-name) 'quit)
+      (when (polyp--should-reactivate) (funcall (polyp--inactive-name) 'on))
       (setq this-command #'ignore
             unread-command-events
             (append
              (mapcar (lambda (x) (cons t x))
                      (append (if prefix-arg
                                  ;; HACK: For some reason this-command-keys does not include the prefix, add it manually.
-                                 (listify-key-sequence (format "\C-u%s" (prefix-numeric-value prefix-arg))))
+                             (listify-key-sequence (format "\C-u%s" (prefix-numeric-value prefix-arg))))
                              (listify-key-sequence keys)))
-                    unread-command-events)))))
-
-(defun polyp--restore (p)
-  "Restore Polyp P."
-  (cond
-   (polyp--active
-    (let ((q polyp--active))
-      (while (polyp--prev q)
-        (setq q (polyp--prev q)))
-      (setf (polyp--prev q) p)))
-   (overriding-terminal-local-map
-    (let ((n (make-symbol "polyp--restore")))
-      (fset n (lambda ()
-                (unless overriding-terminal-local-map
-                  (remove-hook 'post-command-hook n)
-                  (polyp--restore p))))
-      (add-hook 'post-command-hook n)))
-   (t
-    (funcall (polyp--name (setq polyp--active p)) 'on))))
+             unread-command-events)))))
 
 (defun polyp--toggle (flag)
   "Generate a toggle string depending on FLAG."
@@ -309,50 +306,87 @@ The current Polyp is shown in the mode-line if `polyp-mode' is enabled."
 
 (defmacro polyp--call (cmd)
   "Call Polyp function CMD, which can be a symbol, a key string or a sexp."
-  (cond
-   ((symbolp cmd)
-    `(call-interactively (setq this-command #',cmd)))
-   ((stringp cmd)
-    `(let ((bind (key-binding ,(kbd cmd))))
-       (if (commandp bind t)
-           (call-interactively (setq this-command bind))
-         (setq unread-command-events
-               (append
-                ',(mapcar (lambda (x) (cons t x)) (listify-key-sequence (kbd cmd)))
-                unread-command-events)))))
-   (t cmd)))
+  `(polyp--protect
+    ,(cond
+      ((symbolp cmd)
+       `(call-interactively (setq this-command #',cmd)))
+      ((stringp cmd)
+       `(let ((bind (key-binding ,(kbd cmd))))
+          (if (commandp bind t)
+              (call-interactively (setq this-command bind))
+            (setq unread-command-events
+                  (append
+                   ',(mapcar (lambda (x) (cons t x)) (listify-key-sequence (kbd cmd)))
+                   unread-command-events)))))
+      (t cmd))))
 
-(defun polyp--quit ()
+(defun polyp--keyboard-quit ()
   "Quit the current Polyp and restore the previous Polyp."
   (interactive)
-  (polyp--body-quit
-   (funcall (polyp--name polyp--active) 'quit)
-   (polyp--call #'keyboard-quit)))
+  (funcall (polyp--active-name) 'quit)
+  (polyp--call #'keyboard-quit))
 
-(defun polyp--enter-cmd (name cmd)
+(defun polyp--keyboard-escape-quit ()
+  "Quit the current Polyp and restore the previous Polyp."
+  (interactive)
+  (funcall (polyp--active-name) 'quit)
+  (polyp--call #'keyboard-escape-quit))
+
+(defun polyp--cmd-enter (name cmd)
   "Generate enter command for Polyp named NAME.
 The command CMD is executed after showing the Polyp description."
-  `(,(format "Show Polyp `%s' and call `%s'." name cmd)
+  `(,(format "Enter Polyp `%s' and call `%s'." name cmd)
     (interactive)
-    (,name)
-    (polyp--body-off
-     (,name 'off)
-     (polyp--call ,cmd))))
+    (,name 'enter)
+    (polyp--call ,cmd)))
 
-(defun polyp--quit-cmd (name cmd)
+(defun polyp--cmd-quit (name cmd)
   "Generate quit command for Polyp named NAME.
-The command CMD is executed after hiding the Polyp description."
-  `(,(format "Hide Polyp `%s' and call `%s'." name cmd)
+The command CMD is executed after quitting the Polyp."
+  `(,(format "Quit Polyp `%s' and call `%s'." name cmd)
     (interactive)
-    (polyp--body-quit
-     (,name 'quit)
-     (polyp--call ,cmd))))
+    (,name 'quit)
+    (polyp--call ,cmd)))
 
-(defsubst polyp--set-status (status)
-  "Set Polyp mode line STATUS."
-  (unless (equal polyp-status status)
-    (setq polyp-status status)
+(defsubst polyp--status-update ()
+  "Update Polyp mode line status."
+  (when polyp-mode
+    (setq polyp--status-cache nil)
     (force-mode-line-update t)))
+
+(defsubst polyp--status-color (str font)
+  "Colorize status string STR. Take color from FONT."
+  (propertize str 'face `(:foreground ,(face-attribute font :foreground))))
+
+(defun polyp--status-recursion (elems n m)
+  "Add recursion indicators from N to M to list ELEMS."
+  (while (> m n)
+    (push  (if (memq m polyp--status-minibuffer)
+               (polyp--status-color "↲" 'font-lock-warning-face)
+             (polyp--status-color "⟲" 'font-lock-constant-face))
+           elems)
+    (setq m (- m 1)))
+  elems)
+
+(defun polyp--status-compute ()
+  "Compute the Polyp mode line status."
+  (let* ((depth (recursion-depth))
+         (last-depth depth)
+         (elems nil)
+         (p polyp--stack))
+    (if (and polyp--status-cache (= (car polyp--status-cache) depth))
+        (cdr polyp--status-cache)
+      (while p
+        (setq elems (polyp--status-recursion elems (polyp--depth p) last-depth))
+        (push (polyp--status-color (polyp--status p)
+                                   (if (and polyp--active (eq p polyp--stack))
+                                       'font-lock-function-name-face 'font-lock-comment-face))
+              elems)
+        (setq last-depth (polyp--depth p)
+              p (polyp--prev p)))
+      (setq elems (polyp--status-recursion elems 0 last-depth))
+      (unless elems (push "⊥" elems))
+      (cdr (setq polyp--status-cache (cons depth (string-join (nreverse elems) " ")))))))
 
 (defun polyp--hook (opts name)
   "Get hook option NAME from OPTS plist."
@@ -391,30 +425,29 @@ Then a list of key bindings can be given of the form:
 The keys are bound to the transient map of the Polyp, while
 the outer keys are added to both the transient map and the outer map.
 The bindings which specify :quit, quit the polyp."
+  (declare (indent defun))
   (let* ((opts (if (stringp (car body)) (cdr body) body))
          (desc (if (stringp (car body)) (car body)))
          (body (polyp--reject '(:enter :quit :on :off :update :handler :bind :base-map :outer-map :status :which-key) opts))
-         (desc-quit '((when polyp--update (polyp--window-hide) (setq polyp--update nil))))
+         (desc-quit '((when polyp--update-window (polyp--window-hide) (setq polyp--update-window nil))))
          (desc-update (if desc
                           (pcase-let ((`(,desc . ,fields) (polyp--parse-desc desc)))
                             (if fields
                                 `((polyp--window-show (format ,desc ,@fields))
-                                  (setq polyp--update ',name))
-                              `((unless (eq polyp--update ',name)
+                                  (setq polyp--update-window ',name))
+                              `((unless (eq polyp--update-window ',name)
                                   (polyp--window-show ,desc)
-                                  (setq polyp--update ',name)))))
+                                  (setq polyp--update-window ',name)))))
                         desc-quit))
          (opt-outer-map (or (plist-get opts :outer-map) 'global-map))
          (opt-base-map (or (plist-get opts :base-map) 'polyp-base-map))
          (opt-handler (plist-get opts :handler))
+         (opt-status (or (plist-get opts :status) (symbol-name name)))
          (opt-which-key (plist-get opts :which-key))
-         (opt-update `(,@desc-update ,@(polyp--hook opts :update)))
-         (opt-on `((polyp--set-status ,(if (plist-member opts :status)
-                                           (plist-get opts :status)
-                                         (symbol-name name)))
-                   ,@(polyp--hook opts :on)))
-         (opt-off `((polyp--set-status nil)
-                    ,@(polyp--hook opts :off)))
+         (opt-update `(,@desc-update
+                       ,@(polyp--hook opts :update)))
+         (opt-on (polyp--hook opts :on))
+         (opt-off (polyp--hook opts :off))
          (opt-quit `(,@desc-quit
                      ,@(polyp--hook opts :quit)
                      ,@(if opt-which-key '((polyp--which-key-quit)))))
@@ -422,32 +455,48 @@ The bindings which specify :quit, quit the polyp."
                       ,@(if opt-which-key '((polyp--which-key-enter)))))
          (opt-bind (plist-get opts :bind))
          (used-names)
-         (tmp (gensym)))
+         (new (gensym)))
     `(progn
        ;; The main function of the Polyp.
        (defun ,name (&optional op)
          ,(format "Polyp `%s'." name)
          (interactive)
-         (cl-assert (or (not (eq op 'on)) (and polyp--active (eq (polyp--name polyp--active) ',name))))
-         (if (or (eq op 'off) (eq op 'quit))
-             (progn
-               ,@opt-off
-               (internal-pop-keymap ,name 'overriding-terminal-local-map)
-               (remove-hook 'pre-command-hook (polyp--handler polyp--active))
-               (when (eq op 'quit) ,@opt-quit)
-               (setq polyp--active nil))
-           (let ((,tmp (polyp--make :name ',name
-                                    :handler #',(intern (format "polyp--handler-%s" (or opt-handler 'quit)))
-                                    :prev polyp--active)))
-             (unless (or (eq op 'on) (and polyp--active (eq (polyp--name polyp--active) ',name)))
-               (when polyp--active (funcall (polyp--name polyp--active) 'off))
-               (setq polyp--active ,tmp)
-               ,@opt-enter
-               (setq op 'on)))
-           (when (eq op 'on)
-             (add-hook 'pre-command-hook (polyp--handler polyp--active))
-             (internal-push-keymap ,name 'overriding-terminal-local-map)
-             ,@opt-on)
+         (pcase-exhaustive op
+           ('off
+            (cl-assert (eq (polyp--active-name) ',name))
+            ,@opt-off
+            (internal-pop-keymap ,name 'overriding-terminal-local-map)
+            (remove-hook 'pre-command-hook (polyp--handler polyp--stack))
+            (setq polyp--active nil)
+            (polyp--status-update))
+           ('quit
+            (when polyp--active (,name 'off))
+            (cl-assert (eq (polyp--inactive-name) ',name))
+            ,@opt-quit
+            (setq polyp--stack (polyp--prev polyp--stack))
+            (polyp--status-update))
+           ('on
+            (cl-assert (eq (polyp--inactive-name) ',name))
+            (setq polyp--active t)
+            (add-hook 'pre-command-hook (polyp--handler polyp--stack))
+            (internal-push-keymap ,name 'overriding-terminal-local-map)
+            ,@opt-on
+            (polyp--status-update))
+           ((or 'nil 'enter)
+            ;; Switch off for 'enter, switch on for nil.
+            ;; nil argument is passed if the polyp is called from outside.
+            (if (and polyp--active (eq (polyp--active-name) ',name))
+                (when (eq op 'enter) (,name 'off))
+              (let ((,new (polyp--make :name ',name
+                                       :handler #',(intern (format "polyp--handler-%s" (or opt-handler 'quit)))
+                                       :prev polyp--stack
+                                       :status ,opt-status
+                                       :depth (recursion-depth))))
+                (when polyp--active (funcall (polyp--active-name) 'off))
+                (setq polyp--stack ,new)
+                ,@opt-enter
+                (unless (eq op 'enter) (,name 'on))))))
+         (unless (eq op 'quit)
            ,@opt-update))
 
        ;; Create keymap which inherits from :base-map
@@ -463,32 +512,38 @@ The bindings which specify :quit, quit the polyp."
             (setq keys (mapcar (lambda (k) (key-description (kbd k)))
                                (if (listp keys) keys (list keys))))
             (when (stringp cmd) (setq cmd (key-description (kbd cmd))))
-            (let ((sym (intern (format "%s/%s" name cmd))))
+            (let ((sym (intern (format "%s/%s" name cmd)))
+                  (kw (and (= 1 (length enter)) (keywordp (car enter)))))
               ;; Ensure that function name is unique
               (when (memq sym used-names)
                 (setq sym (intern (format "%s/%s[%s]" name cmd (car keys)))))
               (push sym used-names)
               `((defun ,sym ()
-                  ,@(if (equal enter '(:quit)) (polyp--quit-cmd name cmd) (polyp--enter-cmd name cmd)))
-                ,@(unless (equal enter '(:quit))
+                  ,@(funcall (intern (concat
+                                      "polyp--cmd-"
+                                      (substring (symbol-name (if kw (car enter) :enter)) 1)))
+                             name cmd))
+                ,@(unless kw
                     (append (polyp--bind-keys name enter sym)
                             (polyp--bind-keys opt-outer-map enter sym)))
                 ,@(polyp--bind-keys name keys sym))))
           body)
        ',name)))
-(put 'polyp 'lisp-indent-function 'defun)
 
 ;;;###autoload
 (define-minor-mode polyp-mode
   "Minor mode which shows the current Polyp in the mode-line."
   :global t
-  (if polyp-mode
-      (push '(polyp-status ("" polyp-mode-line " ")) mode-line-misc-info)
-    (setq mode-line-misc-info (assq-delete-all 'polyp-status mode-line-misc-info))))
+  (if (not polyp-mode)
+      (setq mode-line-misc-info (assq-delete-all 'polyp-mode mode-line-misc-info))
+    (push '(polyp-mode ("[" (:eval (polyp--status-compute)) "] ")) mode-line-misc-info)
+    (polyp--status-update)))
 
 (defun polyp-repeat (&optional arg)
   "Repeat last Polyp command. The prefix argument can be overwritten by ARG."
   (interactive "p")
+  (when (or (not last-command) (eq last-command 'polyp-repeat))
+    (user-error "Nothing to repeat"))
   (setq current-prefix-arg (if (eq arg 1) last-prefix-arg arg)
         this-command last-command)
   (when (eq last-command 'self-insert-command)
@@ -499,6 +554,7 @@ The bindings which specify :quit, quit the polyp."
       (message "Repeat %s" this-command)))
   (call-interactively this-command))
 
+(declare-function which-key--hide-popup "which-key" ())
 (defvar which-key-show-transient-maps)
 (defvar which-key-persistent-popup)
 (defvar polyp--which-key-state nil)
@@ -516,16 +572,19 @@ The bindings which specify :quit, quit the polyp."
           which-key-persistent-popup (cdr state)))
   (unless polyp--which-key-state (which-key--hide-popup)))
 
-;; TODO is there a better possibility to add a filter to which-key?
-;; https://github.com/justbur/emacs-which-key/issues/272
-(defun polyp--which-key-get-bindings (fun &optional prefix keymap filter recursive)
-  "Polyp advice for `which-key--get-bindings'."
-  (when polyp--active
-    (setq filter (lambda (x) (not (string-prefix-p "polyp--" (cdr x))))))
-  (funcall fun prefix keymap filter recursive))
+(defun polyp--minibuffer-setup ()
+  "Minibuffer setup hook."
+  (push (recursion-depth) polyp--status-minibuffer)
+  ;; Entering the minibuffer is only allowed if there is no active Polyp.
+  ;; This is important since the minibuffer introduces another recursion level.
+  (when polyp--active (user-error "Active Polyp when entering the minibuffer")))
 
-(with-eval-after-load 'which-key
-  (advice-add 'which-key--get-bindings :around #'polyp--which-key-get-bindings))
+(defun polyp--minibuffer-exit ()
+  "Minibuffer exit hook."
+  (pop polyp--status-minibuffer))
+
+(add-hook 'minibuffer-setup-hook #'polyp--minibuffer-setup)
+(add-hook 'minibuffer-exit-hook #'polyp--minibuffer-exit)
 
 (provide 'polyp)
 ;;; polyp.el ends here
