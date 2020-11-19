@@ -331,6 +331,10 @@ The bindings which specify :quit, quit the polyp."
          (opt-bind (let ((b (plist-get opts :bind))) (if (listp b) b (list b))))
          (used-names))
     `(progn
+       ;; Create keymap which inherits from :base-map
+       (with-no-warnings (defvar ,name))
+       (setq ,name (make-composed-keymap (make-sparse-keymap) ,opt-base-map))
+
        ;; The main function of the Polyp.
        (defun ,name (&optional op)
          ,(format "Polyp `%s'." name)
@@ -373,9 +377,6 @@ The bindings which specify :quit, quit the polyp."
             (unless (eq op 'enter) (,name 'on)))))
          (unless (eq op 'quit)
            ,@opt-update))
-
-       ;; Create keymap which inherits from :base-map
-       (setq ,name (make-composed-keymap (make-sparse-keymap) ,opt-base-map))
 
        ;; Bind main keys
        ,@(polyp--bind-keys opt-outer-map opt-bind name)
