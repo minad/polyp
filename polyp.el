@@ -518,8 +518,8 @@ The bindings which specify :quit, quit the polyp."
 
 (defsubst polyp--which-key-enter ()
   "Called when Polyp with which-key support is entered."
-  (setq polyp--which-key-state (cons which-key-show-transient-maps which-key-persistent-popup)
-        which-key-show-transient-maps t
+  (push polyp--which-key-state (cons which-key-show-transient-maps which-key-persistent-popup))
+  (setq which-key-show-transient-maps t
         which-key-persistent-popup t))
 
 (defsubst polyp--which-key-quit ()
