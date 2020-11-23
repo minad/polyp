@@ -160,9 +160,7 @@
 
 (defmacro polyp--desc-toggle! (flag)
   "Macro used to generate a toggle for FLAG."
-  (if (symbolp flag)
-      `(polyp--desc-toggle (and (boundp ',flag) ,flag))
-    `(polyp--desc-toggle ,flag)))
+  `(polyp--desc-toggle ,(if (symbolp flag) `(bound-and-true-p ,flag) flag)))
 
 (defun polyp--desc-colorize (str)
   "Colorize the string STR according to `polyp-desc-markup'."

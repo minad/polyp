@@ -1,5 +1,10 @@
 # polyp.el - Nested modal keybindings
 
+**Note:** This package is not yet published on melpa and it is unclear if I will ever put it there, since
+its functionality is too similar to hydra. This is an experimentation test ground for modal keybindings, together
+with my other experimental package https://github.com/minad/tack. There are many alternatives
+to consider if you want modal keybindings. By just a quick search I came up with hydra, modalka, ryo-modal, xah, fingers, boon, multistate, meow and the obvious evil.
+
 Polyp is a small package which allows the creation of nested
 editing modes. This package is inspired by Hydra and takes ideas from modal
 keybinding packages like modalka/ryo-modal.
