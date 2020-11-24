@@ -207,8 +207,20 @@
   `(unwind-protect ,body (polyp--restore)))
 
 (defmacro polyp--call (cmd)
-  "Call Polyp function CMD, which can be a symbol or a sexp."
-  `(polyp--protect ,(if (symbolp cmd) `(call-interactively (setq this-command #',cmd)) cmd)))
+  "Call Polyp function CMD, which can be a symbol, a key string or a sexp."
+  `(polyp--protect
+    ,(cond
+      ((symbolp cmd)
+       `(call-interactively (setq this-command #',cmd)))
+      ((stringp cmd)
+       `(let ((bind (key-binding ,(kbd cmd))))
+          (if (commandp bind t)
+              (call-interactively (setq this-command bind))
+            (setq unread-command-events
+                  (append
+                   ',(mapcar (lambda (x) (cons t x)) (listify-key-sequence (kbd cmd)))
+                   unread-command-events)))))
+      (t cmd))))
 
 (defsubst polyp--valid-keys (keys)
   "Return t if KEYS is part of the Polyp keymap."
@@ -384,6 +396,7 @@ The bindings which specify :quit, quit the polyp."
        ,@(mapcan
           (pcase-lambda (`(,keys ,cmd . ,enter))
             ;; Normalize keys
+            (when (stringp cmd) (setq cmd (key-description (kbd cmd))))
             (setq keys (mapcar (lambda (k) (key-description (kbd k))) (if (listp keys) keys (list keys))))
             (let ((sym (intern (format "%s/%s" name cmd)))
                   (kw (and (= 1 (length enter)) (keywordp (car enter)))))
