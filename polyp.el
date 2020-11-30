@@ -492,11 +492,11 @@ The bindings which specify :quit, quit the polyp."
 (define-minor-mode polyp-mode
   "Minor mode which shows the current Polyp in the mode-line."
   :global t
-  (if (not polyp-mode)
-      (setq mode-line-misc-info (assq-delete-all 'polyp--lighter-string mode-line-misc-info)
-            polyp--lighter-string nil)
-    (push '(polyp--lighter-string ("[" (:eval polyp--lighter-string) "] ")) mode-line-misc-info)
-    (polyp--lighter-update)))
+  (setq mode-line-misc-info (assq-delete-all 'polyp--lighter-string mode-line-misc-info)
+        polyp--lighter-string nil)
+  (when polyp-mode
+    (push '(polyp--lighter-string ("[" (:eval polyp--lighter-string) "] ")) mode-line-misc-info))
+    (polyp--lighter-update))
 
 (defun polyp--lighter-update ()
   "Update Polyp mode line lighter."
