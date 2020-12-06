@@ -508,12 +508,9 @@ The bindings which specify :quit, quit the polyp."
                    (propertize
                     (polyp--lighter p)
                     'face
-                    `(:foreground
-                      ,(face-attribute
-                        (if (and polyp--active (eq p polyp--stack))
-                            'font-lock-function-name-face
-                          'font-lock-comment-face)
-                        :foreground))))
+                    (if (and polyp--active (eq p polyp--stack))
+                        'font-lock-function-name-face
+                      'font-lock-comment-face)))
               p (polyp--prev p)))
       (setq polyp--lighter-string (and str (replace-regexp-in-string " +" " " (string-trim str))))
       (force-mode-line-update t))))
