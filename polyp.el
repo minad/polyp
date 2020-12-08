@@ -60,6 +60,9 @@
 (defvar polyp--lighter-string nil
   "Lighter information shown in the mode line.")
 
+;; Allow properties in polyp--lighter-string
+(put 'polyp--lighter-string 'risky-local-variable t)
+
 ;;;; Customization
 
 (defgroup polyp nil
@@ -495,7 +498,7 @@ The bindings which specify :quit, quit the polyp."
   (setq mode-line-misc-info (assq-delete-all 'polyp--lighter-string mode-line-misc-info)
         polyp--lighter-string nil)
   (when polyp-mode
-    (push '(polyp--lighter-string ("[" (:eval polyp--lighter-string) "] ")) mode-line-misc-info))
+    (push '(polyp--lighter-string ("[" polyp--lighter-string "] ")) mode-line-misc-info))
     (polyp--lighter-update))
 
 (defun polyp--lighter-update ()
