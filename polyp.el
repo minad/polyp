@@ -75,14 +75,12 @@
     ("*" . font-lock-constant-face)
     ("=" . font-lock-keyword-face))
   "Highlighting characters and fonts used for the Polyp descriptions."
-  :type 'alist
-  :group 'polyp)
+  :type 'alist)
 
 (defcustom polyp-bind-key
   (if (fboundp 'bind-key) 'bind-key (lambda (key cmd map) (define-key map key cmd)))
   "Function which Polyp uses used to define key bindings."
-  :type 'symbol
-  :group 'polyp)
+  :type 'symbol)
 
 (defvar polyp-base-map
   (let ((map (make-sparse-keymap)))
