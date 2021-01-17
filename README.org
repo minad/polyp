@@ -30,7 +30,7 @@ by the text-scale-adjust function built into Emacs. It can easily be
 replicated as follows.
 
 #+BEGIN_SRC emacs-lisp
-    (polyp ~scale
+    (polyp-define ~scale
       "=Scale:=  _+_:larger  _-_:smaller  _0_:default"
       (("-" "C--") text-scale-decrease "C-x C--")
       (("+" "C-+") text-scale-increase "C-x C-+" "C-x C-=")
@@ -84,23 +84,23 @@ Furthermore keys can be redirect to the underlying keymap, see the
 ** Examples
 
 #+BEGIN_SRC emacs-lisp
-    (polyp ~move-text
+    (polyp-define ~move-text
      "=Move Text:= _↕_"
      ("<up>" move-text-up "M-<up>")
      ("<down>" move-text-down "M-<down>"))
 
-    (polyp ~expand-region
+    (polyp-define ~expand-region
       "=Expand:=  _#_:expand  _'_:contract  _0_:reset"
       ("#" er/expand-region)
       ("'" er/contract-region)
       ("0" (er/expand-region 0)))
 
-    (polyp ~undo
+    (polyp-define ~undo
       "=Undo:=  _u_ndo  _r_edo"
       ("u" undo-fu-only-undo "C-x u" "C-_" "C-/" "<undo>")
       ("r" undo-fu-only-redo))
 
-    (polyp ~bookmark
+    (polyp-define ~bookmark
       "=Bookmark:=  _s_et  _j_ump  _d_elete  _r_ename  _e_dit"
       ("s" bookmark-set-no-overwrite)
       ("j" bookmark-jump)
@@ -108,13 +108,13 @@ Furthermore keys can be redirect to the underlying keymap, see the
       ("d" bookmark-delete)
       ("e" edit-bookmarks :quit))
 
-    (polyp ~scale
+    (polyp-define ~scale
       "=Scale:=  _+_:larger  _-_:smaller  _0_:default"
       (("-" "C--") text-scale-decrease "C-x C--")
       (("+" "C-+") text-scale-increase "C-x C-+" "C-x C-=")
       (("0" "C-0") (text-scale-increase 0) "C-x C-0"))
 
-    (polyp ~win
+    (polyp-define ~win
       "=Window:=  _0123_  _↔↕_:move  _C-↔↕_:resize  _M-↔↕_:swap  _u_ndo  _r_edo"
       :bind "C-x w"
       ("0"         delete-window)
@@ -136,7 +136,7 @@ Furthermore keys can be redirect to the underlying keymap, see the
       ("M-<left>"  (buffer-swap 'left))
       ("M-<right>" (buffer-swap 'right)))
 
-    (polyp ~multiple-cursors
+    (polyp-define ~multiple-cursors
       "=Multiple Cursors (%(mc/num-cursors) active)=
      ↑^^            ↓^^            Mark^^              Other^^
     ──^^─────────────^^────────────────^^───────────────────^^────────────
@@ -159,7 +159,7 @@ Furthermore keys can be redirect to the underlying keymap, see the
       ("c" mc/insert-letters :quit)
       ("0" mc/insert-numbers :quit))
 
-    (polyp ~cmd
+    (polyp-define ~cmd
       :bind "C-z"
       :handler run
       :on (setq cursor-type 'hollow)
@@ -230,7 +230,7 @@ Furthermore keys can be redirect to the underlying keymap, see the
       ("x" "C-x")
       ("y" "C-y"))
 
-    (polyp ~toggles
+    (polyp-define ~toggles
       "=Toggles=
      ^^View            ^^^^^^^^^^^^^^^^^^^^^^^^^^   ^^Highlight        ^^^^^^^^^^^^^^^^^^^^^^^^^   ^^Edit            ^^^^^^^^^^^^^^^^^^^^^^   ^^Debug
     ─^^────────────────^^^^^^^^^^^^^^^^^^^^^^^^^^───^^─────────────────^^^^^^^^^^^^^^^^^^^^^^^^^───^^────────────────^^^^^^^^^^^^^^^^^^^^^^───^^─────────────^^^^^^^^^^^^^^^^─

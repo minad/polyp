@@ -281,7 +281,7 @@ The command CMD is executed after quitting the Polyp."
       (if (symbolp x) `((,x)) `(,x))))
 
 ;;;###autoload
-(defmacro polyp (name &rest body)
+(defmacro polyp-define (name &rest body)
   "Define a Polyp with a given NAME.
 
 The description can contain syntax highlighting.
