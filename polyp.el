@@ -155,7 +155,7 @@
 
 ;;;; Description string parsing
 
-(defsubst polyp--desc-toggle (flag)
+(defun polyp--desc-toggle (flag)
   "Generate a toggle string depending on FLAG."
   (concat "(" (if flag #("•" 0 1 (face success)) " ") ")"))
 
@@ -223,7 +223,7 @@
                    unread-command-events)))))
       (t cmd))))
 
-(defsubst polyp--valid-keys (keys)
+(defun polyp--valid-keys (keys)
   "Return t if KEYS is part of the Polyp keymap."
   (eq this-command (lookup-key (symbol-value (polyp--name polyp--stack)) keys)))
 
@@ -523,13 +523,13 @@ The bindings which specify :quit, quit the polyp."
 (defvar which-key-persistent-popup)
 (defvar polyp--which-key-state nil)
 
-(defsubst polyp--which-key-enter ()
+(defun polyp--which-key-enter ()
   "Called when Polyp with which-key support is entered."
   (push polyp--which-key-state (cons which-key-show-transient-maps which-key-persistent-popup))
   (setq which-key-show-transient-maps t
         which-key-persistent-popup t))
 
-(defsubst polyp--which-key-quit ()
+(defun polyp--which-key-quit ()
   "Called when Polyp with which-key support is quitting."
   (let ((state (pop polyp--which-key-state)))
     (setq which-key-show-transient-maps (car state)
