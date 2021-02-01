@@ -419,21 +419,6 @@ The bindings which specify :quit, quit the polyp."
 
 ;;;; Default commands
 
-(defun polyp-repeat (&optional arg)
-  "Repeat last Polyp command. The prefix argument can be overwritten by ARG."
-  (interactive "p")
-  (when (or (not last-command) (eq last-command 'polyp-repeat))
-    (user-error "Nothing to repeat"))
-  (setq current-prefix-arg (if (eq arg 1) last-prefix-arg arg)
-        this-command last-command)
-  (when (eq last-command 'self-insert-command)
-    (setq last-command-event (char-before)))
-  (let ((n (prefix-numeric-value current-prefix-arg)))
-    (if (and current-prefix-arg (/= n 1))
-        (message "Repeat %sx %s" n this-command)
-      (message "Repeat %s" this-command)))
-  (call-interactively this-command))
-
 (defun polyp--help-command ()
   "Redirect to `prefix-help-command`."
   (interactive)
