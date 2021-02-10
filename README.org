@@ -17,25 +17,25 @@ keybinding packages like modalka/ryo-modal.
 
 It is recommended to configure the package using =use-package=.
 
-#+BEGIN_SRC emacs-lisp
+#+begin_src emacs-lisp
     (use-package polyp
       :config
       ;; Enable the mode-line indicator, showing the currently active mode
       ;; This is optional.
       (polyp-mode))
-#+END_SRC
+#+end_src
 
 Basic example for text scaling. This functionality is already provided
 by the text-scale-adjust function built into Emacs. It can easily be
 replicated as follows.
 
-#+BEGIN_SRC emacs-lisp
+#+begin_src emacs-lisp
     (polyp-define ~scale
       "=Scale:=  _+_:larger  _-_:smaller  _0_:default"
       (("-" "C--") text-scale-decrease "C-x C--")
       (("+" "C-+") text-scale-increase "C-x C-+" "C-x C-=")
       (("0" "C-0") (text-scale-increase 0) "C-x C-0"))
-#+END_SRC
+#+end_src
 
 As a convention I am using names like =~nav= which begin with a tilde,
 like the arm of a polyp.
@@ -47,7 +47,7 @@ is active. The description string can contain highlighting using =_=,
 toggles =%t(expr)= are supported. After the description keyword
 arguments can be specified.
 
-#+BEGIN_SRC emacs-lisp
+#+begin_src emacs-lisp
     :outer-map Keymap used for the outer bindings.
     :base-map  Base keymap used for the transient bindings.
     :bind      Bindings to which this Polyp is bound in the outer keymap.
@@ -58,7 +58,7 @@ arguments can be specified.
     :handler   Specifies the Polyp handler, in particular the behavior if a foreign key is pressed.
     :status    Specifies the status string shown in the mode-line.
     :which-key Enable which-key popup.
-#+END_SRC
+#+end_src
 
 The bindings have the following form, where the =key= is bound to
 =function= when the mode is active. Furthermore a binding ca be bound to
@@ -66,24 +66,24 @@ a =outer-key= or can be marked as =:quit=. The =outer-key= enters the
 mode and if the key of a =:quit= binding is pressed, the mode is left
 again.
 
-#+BEGIN_SRC emacs-lisp
+#+begin_src emacs-lisp
     ("key" function :quit)
     ("key" function "outer-key")
-#+END_SRC
+#+end_src
 
 It is also possible to specify multiple keys.
 
-#+BEGIN_SRC emacs-lisp
+#+begin_src emacs-lisp
     (("key1" "key2") function "outer-key1" "outer-key2"...)
     (("key1" "key2") function :quit)
-#+END_SRC
+#+end_src
 
 Furthermore keys can be redirect to the underlying keymap, see the
 =~cmd= example.
 
 ** Examples
 
-#+BEGIN_SRC emacs-lisp
+#+begin_src emacs-lisp
     (polyp-define ~move-text
      "=Move Text:= _↕_"
      ("<up>" move-text-up "M-<up>")
@@ -267,4 +267,4 @@ Furthermore keys can be redirect to the underlying keymap, see the
       ("de" toggle-de)
       ("ds" toggle-ds)
       ("<home>" ignore :quit))
-#+END_SRC
+#+end_src
