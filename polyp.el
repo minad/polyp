@@ -246,9 +246,11 @@
       ;; Quit current Polyp.
       (while polyp--stack (funcall (polyp--name polyp--stack) 'quit)))))
 
-(defun polyp--define-keys (map keys cmd)
-  "Bind a list of KEYS to CMD in the keymap MAP."
-  (mapcar (lambda (k) `(define-key ,map ,(vconcat (kbd k)) #',cmd)) (if (listp keys) keys (list keys))))
+(defun polyp--define-keys (map keys cmd &optional desc)
+  "Bind a list of KEYS to (DESC . CMD) in the keymap MAP."
+  (mapcar (lambda (k) `(define-key ,map ,(vconcat (kbd k))
+                         ,(if desc `(cons ,(format "%s" desc) #',cmd) `#',cmd)))
+          (if (listp keys) keys (list keys))))
 
 (defun polyp--cmd-enter (name cmd)
   "Generate enter command for Polyp named NAME.
@@ -398,9 +400,9 @@ The bindings which specify :quit, quit the polyp."
                                       (substring (symbol-name (if kw (car enter) :enter)) 1)))
                              name cmd))
                 ,@(unless kw
-                    (append (polyp--define-keys name enter sym)
-                            (polyp--define-keys opt-outer-map enter sym)))
-                ,@(polyp--define-keys name keys sym))))
+                    (append (polyp--define-keys name enter sym cmd)
+                            (polyp--define-keys opt-outer-map enter sym cmd)))
+                ,@(polyp--define-keys name keys sym cmd))))
           body)
        ',name)))
 
