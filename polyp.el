@@ -4,7 +4,7 @@
 ;; Created: 2020
 ;; License: GPL-3.0-or-later
 ;; Version: 0.1
-;; Package-Requires: ((emacs "26"))
+;; Package-Requires: ((emacs "27.1"))
 ;; Homepage: https://github.com/minad/polyp
 
 ;; This file is not part of GNU Emacs.
@@ -36,7 +36,6 @@
 (defvar display-line-numbers)
 (defvar display-fill-column-indicator)
 (defvar tab-line-format)
-(defvar golden-ratio-mode)
 
 (cl-defstruct (polyp- (:constructor polyp--make) (:copier nil)) name handler prev lighter)
 
@@ -47,9 +46,6 @@
   "Polyp window update status.")
 
 (defconst polyp--window-buffer " *polyp*")
-(with-eval-after-load 'ace-window
-  (defvar aw-ignored-buffers)
-  (push polyp--window-buffer aw-ignored-buffers))
 
 (defvar polyp--active nil
   "Polyp is active.")
@@ -76,11 +72,6 @@
     ("=" . font-lock-keyword-face))
   "Highlighting characters and fonts used for the Polyp descriptions."
   :type 'alist)
-
-(defcustom polyp-bind-key
-  (if (fboundp 'bind-key) 'bind-key (lambda (key cmd map) (define-key map key cmd)))
-  "Function which Polyp uses used to define key bindings."
-  :type 'symbol)
 
 (defvar polyp-base-map
   (let ((map (make-sparse-keymap)))
@@ -133,7 +124,7 @@
 
 (defun polyp--window-show (str)
   "Show STR in Polyp window."
-  (let (deactivate-mark golden-ratio-mode)
+  (let (deactivate-mark)
     (unless (window-live-p polyp--window) (polyp--window-make))
     (with-selected-window polyp--window
       (unless (string= (buffer-string) str)
@@ -255,9 +246,9 @@
       ;; Quit current Polyp.
       (while polyp--stack (funcall (polyp--name polyp--stack) 'quit)))))
 
-(defun polyp--bind-keys (map keys cmd)
+(defun polyp--define-keys (map keys cmd)
   "Bind a list of KEYS to CMD in the keymap MAP."
-  (mapcar (lambda (k) `(,polyp-bind-key ,(vconcat (kbd k)) #',cmd ,map)) (if (listp keys) keys (list keys))))
+  (mapcar (lambda (k) `(define-key ,map ,(vconcat (kbd k)) #',cmd)) (if (listp keys) keys (list keys))))
 
 (defun polyp--cmd-enter (name cmd)
   "Generate enter command for Polyp named NAME.
@@ -300,7 +291,6 @@ After that, the following keyword arguments can be specified:
 - :update    Action to perform after each action, when Polyp is active.
 - :handler   Specifies the Polyp handler, which handles foreign keys.
 - :lighter   Specifies the lighter string shown in the mode-line.
-- :which-key Enable which-key popup.
 
 Then a list of key bindings can be given of the form:
 
@@ -315,7 +305,7 @@ The bindings which specify :quit, quit the polyp."
   (declare (indent defun))
   (let* ((opts (if (stringp (car body)) (cdr body) body))
          (desc (if (stringp (car body)) (car body)))
-         (body (polyp--reject '(:enter :quit :on :off :update :handler :bind :base-map :outer-map :lighter :which-key) opts))
+         (body (polyp--reject '(:enter :quit :on :off :update :handler :bind :base-map :outer-map :lighter) opts))
          (desc-quit '((when polyp--window-update (polyp--window-hide) (setq polyp--window-update nil))))
          (desc-update (if desc
                           (pcase-let ((`(,desc . ,fields) (polyp--desc-parse desc)))
@@ -330,16 +320,13 @@ The bindings which specify :quit, quit the polyp."
          (opt-base-map (or (plist-get opts :base-map) 'polyp-base-map))
          (opt-handler (intern (format "polyp--handler-%s" (or (plist-get opts :handler) 'quit))))
          (opt-lighter (or (plist-get opts :lighter) (format " %s " name)))
-         (opt-which-key (plist-get opts :which-key))
          (opt-update `(,@desc-update
                        ,@(polyp--opt-hook opts :update)))
          (opt-on (polyp--opt-hook opts :on))
          (opt-off (polyp--opt-hook opts :off))
          (opt-quit `(,@desc-quit
-                     ,@(polyp--opt-hook opts :quit)
-                     ,@(if opt-which-key '((polyp--which-key-quit)))))
-         (opt-enter `(,@(polyp--opt-hook opts :enter)
-                      ,@(if opt-which-key '((polyp--which-key-enter)))))
+                     ,@(polyp--opt-hook opts :quit)))
+         (opt-enter (polyp--opt-hook opts :enter))
          (opt-bind (plist-get opts :bind))
          (used-names))
     `(progn
@@ -385,13 +372,13 @@ The bindings which specify :quit, quit the polyp."
                                             :lighter ,opt-lighter)))
                 (when polyp--active (funcall (polyp--name polyp--stack) 'off))
                 (setq polyp--stack new-polyp))
-            ,@opt-enter
-            (unless (eq op 'enter) (,name 'on)))))
+              ,@opt-enter
+              (unless (eq op 'enter) (,name 'on)))))
          (unless (eq op 'quit)
            ,@opt-update))
 
        ;; Bind main keys
-       ,@(polyp--bind-keys opt-outer-map opt-bind name)
+       ,@(polyp--define-keys opt-outer-map opt-bind name)
 
        ;; Generate code for the bindings
        ,@(mapcan
@@ -411,9 +398,9 @@ The bindings which specify :quit, quit the polyp."
                                       (substring (symbol-name (if kw (car enter) :enter)) 1)))
                              name cmd))
                 ,@(unless kw
-                    (append (polyp--bind-keys name enter sym)
-                            (polyp--bind-keys opt-outer-map enter sym)))
-                ,@(polyp--bind-keys name keys sym))))
+                    (append (polyp--define-keys name enter sym)
+                            (polyp--define-keys opt-outer-map enter sym)))
+                ,@(polyp--define-keys name keys sym))))
           body)
        ',name)))
 
@@ -482,7 +469,7 @@ The bindings which specify :quit, quit the polyp."
         polyp--lighter-string nil)
   (when polyp-mode
     (push '(polyp--lighter-string ("[" polyp--lighter-string "] ")) mode-line-misc-info))
-    (polyp--lighter-update))
+  (polyp--lighter-update))
 
 (defun polyp--lighter-update ()
   "Update Polyp mode line lighter."
@@ -500,26 +487,6 @@ The bindings which specify :quit, quit the polyp."
               p (polyp--prev p)))
       (setq polyp--lighter-string (and str (replace-regexp-in-string " +" " " (string-trim str))))
       (force-mode-line-update t))))
-
-;;;; * Which-key integration
-
-(declare-function which-key--hide-popup "which-key" ())
-(defvar which-key-show-transient-maps)
-(defvar which-key-persistent-popup)
-(defvar polyp--which-key-state nil)
-
-(defun polyp--which-key-enter ()
-  "Called when Polyp with which-key support is entered."
-  (push polyp--which-key-state (cons which-key-show-transient-maps which-key-persistent-popup))
-  (setq which-key-show-transient-maps t
-        which-key-persistent-popup t))
-
-(defun polyp--which-key-quit ()
-  "Called when Polyp with which-key support is quitting."
-  (let ((state (pop polyp--which-key-state)))
-    (setq which-key-show-transient-maps (car state)
-          which-key-persistent-popup (cdr state)))
-  (unless polyp--which-key-state (which-key--hide-popup)))
 
 (provide 'polyp)
 ;;; polyp.el ends here
